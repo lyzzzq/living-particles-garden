@@ -1,0 +1,26 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');let now=1000;const keys=new Set();
+const pen=new Proxy({}, {get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)});pen.createRadialGradient=()=>({addColorStop(){}});
+const ctx={window:{innerWidth:1000,innerHeight:700,addEventListener(){}},document:{getElementById:()=>null,createElement:()=>({width:300,height:320,getContext:()=>pen})},drawingContext:pen,width:1000,height:700,millis:()=>now,Math,lerp:(a,b,t)=>a+(b-a)*t,max:Math.max,min:Math.min,dist:(x,y,a,b)=>Math.hypot(x-a,y-b),mouseX:500,mouseY:350,keyIsDown:k=>keys.has(k),saveCanvas:()=>{}};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync(require('path').join(__dirname,'..','sketch.js'),'utf8'),ctx);
+vm.runInContext('resetScene();handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('flowers.length',ctx),4);assert(vm.runInContext('flowers.every(f=>f.size<=60)',ctx));
+now=1999;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),0);
+now=2001;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),1);
+now=10000;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),1);
+ctx.mouseX=730;ctx.mouseY=330;vm.runInContext('filteredHand=null;handleParticleInteraction(millis())',ctx);now+=1001;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),2);
+const count=vm.runInContext('flowers.length',ctx);keys.add(32);now+=100;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('flowers.length',ctx),count);assert(vm.runInContext('flowers.some(f=>f.goal===1)',ctx));
+const sizes=[];for(let i=0;i<20;i++){ctx.tx=330+i*17;ctx.ty=330+(i%4)*27;vm.runInContext('flowers=[];stems=[];vineLinks=[];userPlantings=0',ctx);const f=vm.runInContext('placeParticleFlower(tx,ty,"random")',ctx);if(f)sizes.push(f.size);}
+assert(Math.min(...sizes)<38&&Math.max(...sizes)>80,'Missing large/small variation');
+assert(vm.runInContext('makeParticleFlower(500,350,80,"coral",42).scheme',ctx)==='apricot');
+let cursorSaved=false;ctx.drawParticleButterfly=()=>{cursorSaved=true;};vm.runInContext('saveParticleArtwork()',ctx);assert.equal(cursorSaved,false);
+vm.runInContext('flowers=[];stems=[];liveVineTip=null;liveVineLength=0;sceneTime=20',ctx);
+vm.runInContext('placeBranchNear({x:480,y:350},0,10000);placeBranchNear({x:525,y:360},0,10300);placeBranchNear({x:570,y:365},0,10600)',ctx);
+assert(vm.runInContext('stems.length===3 && stems[1].x===stems[0].end.x && stems[1].y===stems[0].end.y',ctx),'Vines must join');
+assert(vm.runInContext('new Set(stems.map(s=>s.segments[0].weight)).size===3 && stems.some(s=>s.flowersOnVine.length)',ctx),'Varied vines and small blossoms');
+vm.runInContext('gestureMotes=[];feedbackAnchor=null;emitGestureFeedback({x:400,y:300},1000);emitGestureFeedback({x:450,y:320},1100)',ctx);
+assert(vm.runInContext('gestureMotes.length>0',ctx),'Movement must respond');
+vm.runInContext('drawGestureFeedback(2500)',ctx);assert.equal(vm.runInContext('gestureMotes.length',ctx),0,'Feedback must fade');
+vm.runInContext('flowers=[];stems=[];liveVineTip=null;for(let i=0;i<14;i++)placeBranchNear({x:350+i*35,y:400+Math.sin(i*.5)*20},0,20000+i*250)',ctx);
+assert(vm.runInContext('new Set(stems.map(s=>s.variant)).size>=3',ctx),'Need grass, vines and flower patches');
+assert(vm.runInContext('new Set(stems.flatMap(s=>s.flowersOnVine.map(b=>b.form))).size>=3',ctx),'Need different little flower forms');
+assert(vm.runInContext('makeParticleFlower(500,350,145,"veil",12).petals.length>=15 && makeParticleFlower(500,350,145,"coral",12).petals.length>=29',ctx),'Large flowers need detail');
+console.log('PASS: three growth forms, varied little blossoms, layered large flowers;  connected varied vines, movement feedback and expiry;  no spawn before 1 second, one flower after dwell, no repeated stationary planting, new-location growth, open palm adds no flowers, random large/small sizes, apricot multi-tone rosette, cursor-free export.');

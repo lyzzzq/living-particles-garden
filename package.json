@@ -1,0 +1,9 @@
+{
+  "name": "living-particles-garden",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interactive garden class final project using p5.js and ml5.js Hand Pose",
+  "scripts": {
+    "test": "node tests/interaction.cjs && node tests/tracking-ready.cjs"
+  }
+}
