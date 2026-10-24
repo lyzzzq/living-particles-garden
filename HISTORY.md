@@ -25,3 +25,7 @@
 ## 当前整理
 
 将当前成品、使用说明、离屏预览与两项模拟检查纳入仓库。保存三阶段标签，后续继续追加真实提交。
+
+## GitHub Pages 部署准备
+
+增加自动检查与部署流程：main 分支更新后运行两项模拟检查，只发布 index.html、style.css、sketch.js。需要在 GitHub 仓库 Settings → Pages 中将 Source 设为 GitHub Actions。该记录只表示配置已准备，不表示已上传或上线。

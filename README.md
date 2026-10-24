@@ -25,3 +25,9 @@ index.html 是页面，style.css 是全屏样式，sketch.js 是绘制与手势�
 [HISTORY.md](HISTORY.md) 记录可恢复的三个阶段，每个阶段对应独立 Git commit 和标签。它们是从现存备份补录，日期为本次归档日期，早期缺失步骤无法完整还原。代码在 AI 协作中完成，应按课程要求说明协作方式。
 
 以后每完成一个明确步骤，应在测试后保存一次 commit，并 push 到 GitHub。仅在网页上上传最终三个文件，不能保留本仓库的完整提交历史；应推送整个 Git 仓库。
+
+## GitHub Pages 部署
+
+推送包含历史的 main 分支和阶段标签后，在 Settings → Pages 中选择 GitHub Actions，再在 Actions 中运行 Test and deploy garden。成功后 github-pages 环境会显示网址。后续推送 main 会先检查再自动部署。
+
+流程依据：[GitHub Pages 官方说明](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。
