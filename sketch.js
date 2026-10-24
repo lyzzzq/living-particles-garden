@@ -18,7 +18,7 @@ function setup(){
   const canvas=createCanvas(window.innerWidth,window.innerHeight);
   canvas.parent('canvas-container');pixelDensity(1);frameRate(45);
   document.getElementById('camera').addEventListener('click',startCamera);
-  document.getElementById('mouse').addEventListener('click',()=>{mode='mouse';hands=[];filteredHand=null;dwellState.anchor=null;document.getElementById('mouse').setAttribute('aria-pressed','true');setStatus('停留 2 秒种花，大小随机 · 空格张掌绽放 · F 键握拳闭合');});
+  document.getElementById('mouse').addEventListener('click',()=>{mode='mouse';hands=[];filteredHand=null;dwellState.anchor=null;document.getElementById('mouse').setAttribute('aria-pressed','true');setStatus('停留 1 秒种花，大小随机 · 空格张掌绽放 · F 键握拳闭合');});
   document.getElementById('clear').addEventListener('click',resetScene);
   document.getElementById('save').addEventListener('click',saveParticleArtwork);
   resetScene();
@@ -150,7 +150,7 @@ function butterflyMotion(state,point,now){
 }
 // 黑底粒子植物：手势改变生长状态，作品自身保留呼吸与流动。
 let stems=[], ambient=[], vineLinks=[], filteredHand=null, dwellState={anchor:null,start:0,fired:false},userPlantings=0;
-const DWELL_MS=2000;
+const DWELL_MS=1000;
 let gestureMotes=[],feedbackAnchor=null,liveVineTip=null,liveVineLength=0;
 let butterfly={x:0,y:0,visible:0}, currentGesture='move', lastFrame=0, sceneTime=0;
 let lastBranch=0, branchAnchor=null, lastOpen=0, lastBloomPoint=null, movementHeading=-1;
@@ -239,12 +239,7 @@ function drawParticleStem(c,stem){
     c.save();c.translate(leaf.x,leaf.y);c.rotate(leaf.angle+Math.sin(sceneTime*.34+leaf.phase)*.04);c.scale(progress,progress);c.globalAlpha=.65;
     const texture=leaf.texture;c.drawImage(texture.canvas,-150/texture.factor,-260/texture.factor,300/texture.factor,320/texture.factor);c.restore();
   }
-  for(const blossom of stem.flowersOnVine){
-    const x=blossom.x+Math.sin(sceneTime*.3+blossom.phase),y=blossom.y,s=blossom.size*progress;
-    c.globalAlpha=.55;c.fillStyle=blossom.tone;
-    for(let j=0;j<3;j++){c.beginPath();c.ellipse(x+(j-1)*s*.75,y+(j%2?s*.4:0),s*.7,s*.95,(j-1)*.6,0,7);c.fill();}
-    c.fillStyle='#d7e477';c.globalAlpha=.75;c.fillRect(x-.5,y-.5,1.2,1.2);
-  }
+  for(const blossom of stem.flowersOnVine)drawVineBlossom(c,blossom,progress);
   c.restore();
 }
 
@@ -263,12 +258,12 @@ function handleParticleInteraction(now){
   const point=filteredPoint(raw,now);cursorPoint=point;
   emitGestureFeedback(point,now);
   const gesture=fist?'fist':open?'open':'move',changed=gesture!==currentGesture;
-  if(changed)setStatus(({open:'张掌 · 让你种下的花绽放',fist:'握拳 · 花序闭合',move:'停留 2 秒播种 · 大小与花型随机'})[gesture]);
+  if(changed)setStatus(({open:'张掌 · 让你种下的花绽放',fist:'握拳 · 花序闭合',move:'停留 1 秒播种 · 大小与花型随机'})[gesture]);
   if(!open&&!fist){
     if(!dwellState.anchor||Math.hypot(point.x-dwellState.anchor.x,point.y-dwellState.anchor.y)>25)dwellState={anchor:{...point},start:now,fired:false};
     else if(!dwellState.fired&&now-dwellState.start>=DWELL_MS){
       const planted=placeParticleFlower(point.x,point.y,'random');dwellState.fired=true;
-      setStatus(planted?`你种下了第 ${userPlantings} 朵花。移动到新位置，停留 2 秒继续。`:'这里有点拥挤，移动到空处停留 2 秒再试。');
+      setStatus(planted?`你种下了第 ${userPlantings} 朵花。移动到新位置，停留 1 秒继续。`:'这里有点拥挤，移动到空处停留 1 秒再试。');
     }
     if(branchAnchor){const dx=point.x-branchAnchor.x,dy=point.y-branchAnchor.y,d=Math.hypot(dx,dy);if(d>28&&now-lastBranch>180){movementHeading=Math.atan2(dy,dx);placeBranchNear(point,movementHeading,now);branchAnchor={...point};}}
     else branchAnchor={...point};
@@ -283,9 +278,9 @@ function handleParticleInteraction(now){
 function placeParticleFlower(x,y,large){
   const r=seeded(Math.floor(x*71+y*191+flowers.length*997));
   const roll=r(),isRandom=large==='random';
-  let size=isRandom?(roll<.32?20+r()*18:roll<.78?42+r()*30:Math.min(130,Math.min(width,height)*(.12+r()*.055))):large?Math.min(135,Math.min(width,height)*.18):15+r()*17;
+  let size=isRandom?(roll<.32?20+r()*18:roll<.78?42+r()*30:Math.min(170,Math.min(width,height)*(.17+r()*.065))):large?Math.min(135,Math.min(width,height)*.18):15+r()*17;
   const room=Math.min(x,width-x,y,height-y-65);
-  if(isRandom&&userPlantings>=2&&!flowers.some(f=>f.userCreated&&f.size>75)&&room>100)size=85+r()*Math.min(40,room-90);
+  if(isRandom&&userPlantings>=2&&!flowers.some(f=>f.userCreated&&f.size>75)&&room>100)size=110+r()*Math.min(45,Math.max(0,room-110));
   const isLarge=size>75;
   if(flowers.length>=32)return null;
   for(let i=0;i<24;i++){
@@ -318,35 +313,40 @@ function drawGestureFeedback(now){
   c.restore();
 }
 function placeBranchNear(point,heading,now){
-  if(stems.length>=120)return null;
-  if(point.x<25||point.x>width-25||point.y<70||point.y>height-75||point.x<width*.31&&point.y<height*.3)return null;
+  if(stems.length>=120||point.x<25||point.x>width-25||point.y<70||point.y>height-75||point.x<width*.31&&point.y<height*.3)return null;
   const r=seeded(Math.floor(point.x*71+point.y*119+stems.length*173));
-  let start=liveVineTip&&Math.hypot(liveVineTip.x-point.x,liveVineTip.y-point.y)<175&&liveVineLength<420?{...liveVineTip}:null;
-  if(!start){
-    const ends=stems.filter(s=>s.end).map(s=>s.end).filter(p=>Math.hypot(p.x-point.x,p.y-point.y)<120).sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y));
-    if(ends.length)start={...ends[0]};
-    else {const near=[...flowers].sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y))[0];if(near&&Math.hypot(near.x-point.x,near.y-point.y)<150){const a=Math.atan2(point.y-near.y,point.x-near.x);start={x:near.x+Math.cos(a)*near.size*.5,y:near.y+Math.sin(a)*near.size*.5};}else start={x:point.x-Math.cos(heading)*35,y:point.y-Math.sin(heading)*35};}
-    liveVineLength=0;
+  // 连续运动形成一个有宽度的生长区域；只有部分区域露出藤蔓骨架。
+  const kind=['vine','meadow','flowers','meadow','vine'][Math.floor(point.x/95+point.y/83)%5];
+  let start=liveVineTip&&Math.hypot(liveVineTip.x-point.x,liveVineTip.y-point.y)<150?{...liveVineTip}:null;
+  if(!start){const end=stems.filter(s=>s.end&&Math.hypot(s.end.x-point.x,s.end.y-point.y)<95).at(-1)?.end;start=end?{...end}:{x:point.x-Math.cos(heading)*36,y:point.y-Math.sin(heading)*36};}
+  const dx=point.x-start.x,dy=point.y-start.y,d=Math.hypot(dx,dy);if(d<18)return null;
+  const length=Math.min(80,d),ux=dx/d,uy=dy/d,end={x:start.x+ux*length,y:start.y+uy*length};
+  if(stems.some(s=>s.end&&Math.hypot(end.x-s.end.x,end.y-s.end.y)<17))return null;
+  const segments=[],blossoms=[],bend=(r()-.5)*length*.7,band=12+r()*32;
+  const greens=['#699982','#aac572','#c5d78d','#749d8b','#b1c8a2'];
+  const pointOn=t=>{const curve=Math.sin(t*Math.PI)*bend;return {x:dx/d*length*t-uy*curve,y:dy/d*length*t+ux*curve};};
+  function sprig(root,angle,len,width){const points=[];for(let i=0;i<80;i++){const t=r(),w=Math.sin(Math.PI*t)*(1-t*.6)*width;const curve=Math.sin(t*2.8)*len*.22;const a=Math.cos(angle)*len*t-Math.sin(angle)*curve,b=Math.sin(angle)*len*t+Math.cos(angle)*curve;points.push({x:root.x+a+(r()-.5)*w,y:root.y+b+(r()-.5)*w,t,radius:.4+r()*.8,tone:greens[Math.floor(r()*greens.length)]});}segments.push({points,alpha:.4+r()*.35,weight:.7+r()*.85});}
+  if(kind==='vine'){
+    const points=[];for(let i=0;i<240;i++){const t=i/239,p=pointOn(t),width=(1.2+Math.sin(t*5+r())*1.1)*(1-t*.55);points.push({x:p.x+(r()-.5)*width*2,y:p.y+(r()-.5)*width*2,t,radius:.4+r()*.7,tone:greens[i%5]});}segments.push({points,alpha:.6+r()*.25,weight:.8+r()*1.3});
+    for(let i=0;i<2+Math.floor(r()*3);i++){const t=.15+r()*.7,p=pointOn(t),side=i%2?1:-1;sprig(p,heading+side*(.55+r()*.9),10+r()*22,2+r()*5);}
+  }else{
+    // 草叶成簇、交错倾斜，留出空隙，不沿着一根主线均匀排队。
+    const count=kind==='flowers'?3+Math.floor(r()*3):5+Math.floor(r()*6);
+    for(let i=0;i<count;i++){const p=pointOn(r()),offset=gaussian(r)*band*.45;p.x-=uy*offset;p.y+=ux*offset;sprig(p,-1.8+(r()-.5)*2.4,6+r()*24,1.5+r()*4);}
   }
-  const dx=point.x-start.x,dy=point.y-start.y,d=Math.hypot(dx,dy);
-  if(d<18)return null;
-  const length=Math.min(85,d),ux=dx/d,uy=dy/d,offset=(r()-.5)*12;
-  const end={x:start.x+ux*length-uy*offset,y:start.y+uy*length+ux*offset};
-  if(flowers.some(f=>Math.hypot(end.x-f.x,end.y-f.y)<f.size*.55))return null;
-  if(stems.some(s=>s.end&&Math.hypot(end.x-s.end.x,end.y-s.end.y)<19))return null;
-  const bend=(r()-.5)*length*.48,points=[],weight=.55+r()*1.5;
-  for(let i=0;i<190;i++){
-    const t=i/189,density=.5+.35*Math.sin(t*4.5+r());if(r()>density)continue;
-    const curve=Math.sin(Math.PI*t)*bend,spread=(r()-.5)*(1.1+weight);
-    points.push({x:(end.x-start.x)*t-uy*(curve+spread),y:(end.y-start.y)*t+ux*(curve+spread),t,radius:.35+r()*.65,tone:['#789b80','#a7bc8c','#95b4a2'][i%3]});
-  }
-  const blossoms=[];
-  if(stems.length%3!==0){
-    const t=.45+r()*.4,curve=Math.sin(Math.PI*t)*bend;
-    for(let i=0;i<1+Math.floor(r()*3);i++)blossoms.push({x:(end.x-start.x)*t-uy*curve+(r()-.5)*10,y:(end.y-start.y)*t+ux*curve+(r()-.5)*9,size:1.2+r()*3.2,phase:r()*7,tone:['#d9b5d0','#e1d09c','#b6c5db'][i%3]});
-  }
-  const stem={x:start.x,y:start.y,segments:[{points,alpha:.78,weight}],leaves:[],flowersOnVine:blossoms,variant:'joined',phase:r()*7,born:sceneTime,end};
+  const amount=kind==='flowers'?5+Math.floor(r()*6):kind==='vine'?1+Math.floor(r()*3):r()>.5?2:0;
+  const colors=['#edb4cd','#d8c7ec','#e2d791','#e99477','#9fcace','#ce7daa'];
+  for(let i=0;i<amount;i++){const p=pointOn(.1+r()*.85),off=gaussian(r)*band*(kind==='vine'?.16:.65);blossoms.push({x:p.x-uy*off,y:p.y+ux*off-3-r()*12,size:1.8+r()*5.6,phase:r()*7,tone:colors[Math.floor(r()*colors.length)],form:Math.floor(r()*4),angle:(r()-.5)*1.2});}
+  const stem={x:start.x,y:start.y,segments,leaves:[],flowersOnVine:blossoms,variant:kind,phase:r()*7,born:sceneTime,end};
   stems.push(stem);liveVineTip=end;liveVineLength+=length;lastBranch=now;updateParticleCount();return stem;
+}
+function drawVineBlossom(c,b,progress){
+  const s=b.size*progress;if(s<.05)return;c.save();c.translate(b.x+Math.sin(sceneTime*.3+b.phase),b.y);c.rotate(b.angle||0);c.fillStyle=b.tone;c.globalAlpha=.7;
+  if(b.form===1){for(let i=0;i<5;i++){c.save();c.rotate(i*1.256+.15*Math.sin(b.phase+i));c.beginPath();c.ellipse(0,-s*.65,s*.34,s*.75,.15,0,7);c.fill();c.restore();}}
+  else if(b.form===2){c.beginPath();c.ellipse(0,-s*.3,s*.65,s, .3,0,7);c.fill();c.fillStyle='#c4d89a';c.globalAlpha=.65;c.beginPath();c.ellipse(-s*.3,s*.45,s*.3,s*.6,-.5,0,7);c.fill();}
+  else if(b.form===3){for(let i=0;i<7;i++){c.globalAlpha=.4+(i%3)*.2;c.beginPath();c.arc(Math.sin(i*2.4)*s*.7,Math.cos(i*2.4)*s*.6,s*(.2+(i%2)*.08),0,7);c.fill();}}
+  else for(let j=0;j<3;j++){c.beginPath();c.ellipse((j-1)*s*.65,j%2?s*.3:0,s*.55,s*.8,(j-1)*.6,0,7);c.fill();}
+  c.fillStyle='#efce6b';c.globalAlpha=.9;c.fillRect(-.6,-.6,1.4,1.4);c.restore();
 }
 
 function drawParticleButterfly(now){
@@ -382,7 +382,7 @@ function drawFloatingPollen(c){
   }c.restore();
 }
 function saveParticleArtwork(){drawParticleArtwork();saveCanvas('living-particles','png');}
-function updateParticleCount(){const e=document.getElementById('count');if(e)e.textContent=`你种下了 ${userPlantings} 朵花 · ${stems.length} 组枝影`;const hint=document.querySelector?.('header p');if(hint)hint.textContent=userPlantings?'这座花园，正沿着你的动作生长。':'停留两秒，种下你的第一朵花。';}
+function updateParticleCount(){const e=document.getElementById('count');if(e)e.textContent=`你种下了 ${userPlantings} 朵花 · ${stems.length} 组枝影`;const hint=document.querySelector?.('header p');if(hint)hint.textContent=userPlantings?'这座花园，正沿着你的动作生长。':'停留一秒，种下你的第一朵花。';}
 function windowResized(){const ow=width,oh=height;resizeCanvas(window.innerWidth,window.innerHeight);for(const f of flowers){f.x*=width/ow;f.y*=height/oh;}for(const s of stems){s.x*=width/ow;s.y*=height/oh;if(s.end){s.end.x*=width/ow;s.end.y*=height/oh;}}for(const p of ambient){p.x*=width/ow;p.y*=height/oh;}filteredHand=null;branchAnchor=null;feedbackAnchor=null;liveVineTip=null;liveVineLength=0;}
 window.addEventListener('pagehide',()=>{trackingSession++;cameraReady=false;handPose?.detectStop();cameraStream?.getTracks().forEach(track=>track.stop());});
 
@@ -390,20 +390,20 @@ function rebuildVineLinks(){
   vineLinks=[];
   for(let i=0;i<flowers.length;i++){
     const f=flowers[i],others=flowers.slice(0,i).map(q=>({q,d:Math.hypot(q.x-f.x,q.y-f.y)})).sort((a,b)=>a.d-b.d);
-    if(!others.length||others[0].d>width*.4)continue;
+    if(!others.length||others[0].d>Math.min(280,width*.27))continue;
     const q=others[0].q,r=seeded(f.seed+q.seed),dx=q.x-f.x,dy=q.y-f.y,d=Math.hypot(dx,dy),nx=-dy/d,ny=dx/d;
     const points=[];
     for(let j=0;j<430;j++){
-      const t=r(),curve=Math.sin(t*Math.PI)*d*(.1+r()*.08),spread=(r()-.5)*(2+Math.sin(t*Math.PI)*4);
-      if(t>.44&&t<.48&&r()<.7)continue;
-      points.push({x:f.x+dx*t+nx*(curve+spread),y:f.y+dy*t+ny*(curve+spread),phase:r()*7,alpha:.25+r()*.45,size:.5+r()*1.1});
+      const t=r(),curve=Math.sin(t*Math.PI)*d*.16,spread=gaussian(r)*(1.5+Math.pow(Math.sin(t*8),2)*4);
+      if(t<.12||t>.88||t>.4&&t<.57||r()> .3+.6*Math.pow(Math.sin(t*9),2))continue;
+      points.push({x:f.x+dx*t+nx*(curve+spread),y:f.y+dy*t+ny*(curve+spread),phase:r()*7,alpha:.18+r()*.32,size:.4+r()*1.1,tone:['#8caf92','#b7cb88','#7fae9f'][j%3]});
     }
     vineLinks.push({points,phase:r()*7});
   }
 }
 function drawVineLinks(c){
   c.save();c.fillStyle='#bdce79';
-  for(const link of vineLinks)for(const p of link.points){c.globalAlpha=p.alpha;c.fillRect(p.x+Math.sin(sceneTime*.24+p.phase)*1.2,p.y+Math.cos(sceneTime*.21+p.phase)*1.2,p.size,p.size);}
+  for(const link of vineLinks)for(const p of link.points){c.globalAlpha=p.alpha;c.fillStyle=p.tone;c.fillRect(p.x+Math.sin(sceneTime*.24+p.phase)*1.2,p.y+Math.cos(sceneTime*.21+p.phase)*1.2,p.size,p.size);}
   c.restore();
 }
 function vineRibbonTexture(length,seed){
@@ -441,6 +441,7 @@ function petalTexture(length,width,bend,seed,pink,rounded=false){
     for(const patch of patches){const d=Math.pow((t-patch.t)/patch.wt,2)+Math.pow((u-patch.u)/patch.wu,2);if(d<1+(r()-.5)*.2){c.fillStyle=patch.color;break;}}
     const size=.6+r()*.9;c.fillRect(x,y,size/factor,size/factor);
   }
+  for(let vein=0;vein<9;vein++){c.globalAlpha=.12;c.strokeStyle=shades[vein%shades.length];c.lineWidth=.45/factor;c.beginPath();for(let j=0;j<35;j++){const t=j/36,u=(vein-4)/5,envelope=Math.pow(Math.sin(Math.PI*t),.72),x=u*width*envelope+bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed)*length*.1*t,y=-length*t+u*u*length*.12+Math.sin(t*4+seed)*length*.13*t+u*length*.11*t;j?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();}
   // 丝状花瓣边缘，带局部缺口与卷曲。
   c.globalAlpha=.35;c.strokeStyle=shades[2];c.lineWidth=.5/factor;
   for(const side of [-1,1]){c.beginPath();c.moveTo(0,0);for(let i=1;i<30;i++){const t=i/30,w=rounded?(1-Math.exp(-t*10))*Math.pow(1-t,.32)*(.9+.1*Math.sin(t*5+seed)):Math.pow(Math.sin(Math.PI*t),.7)*(.72+.26*Math.sin(t*7+seed)+.13*Math.cos(t*15+seed*.1));const x=side*width*w+bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed)*length*.1*t,y=-length*t+length*.12+Math.sin(t*4+seed)*length*.13*t+side*length*.11*t;if(i%11===0)c.moveTo(x,y);else c.lineTo(x,y);}c.stroke();}
@@ -465,14 +466,15 @@ function makeParticleFlower(x,y,size,type,seed){
   f.scheme=choice==='mixed'?({veil:'blush',coral:'apricot',orchid:'violet',plume:'vermilion',drift:'rose',seed:'amber'})[type]:({pink:'rose',gold:'amber',purple:'violet'})[choice]||'blush';
   f.filaments=[];
   const airy=type==='drift'||type==='plume'||type==='seed';
-  const count=type==='orchid'?9:type==='seed'?1:airy?2:type==='coral'?23:5;
+  const detailed=size>75;const count=type==='orchid'?(detailed?15:9):type==='seed'?1:airy?2:type==='coral'?(detailed?29:23):(detailed?15:5);
   const angles=type==='orchid'?[-1.8,-.25,1.25,2.4]:type==='seed'?[-.35]:type==='coral'?[-2.3,-1.5,-.6,.4,1.7,2.7,3.4]:[-2.4,-.95,-.1,1.2,2.7];
   for(let i=0;i<count;i++){
-    const layer=type==='coral'?(i<9?0:i<17?1:2):type==='orchid'?(i<6?0:1):0;
-    const length=size*(type==='coral'?(.66+r()*.17)*(1-layer*.2):type==='orchid'?(.65+r()*.4)*(1-layer*.25):.45+r()*.9),w=length*(type==='coral'?.4+r()*.17:type==='orchid'?.18+r()*.12:type==='plume'?.14:type==='veil'?.26+r()*.2:type==='seed'?.23:.19+r()*.26),bend=(r()-.5)*length*(type==='coral'?.35:.95);
-    const angle=type==='coral'?(i/8.3*Math.PI*2+layer*.4+(r()-.5)*.26):type==='orchid'?(i<6?i/6*Math.PI*2:i/3*Math.PI*2+.42)+(r()-.5)*.25:angles[i]+(r()-.5)*.65;
+    const layer=type==='coral'?(i<10?0:i<20?1:2):type==='orchid'?(i<7?0:1):detailed?Math.floor(i/5):0;
+    const length=size*(type==='coral'?(.66+r()*.17)*(1-layer*.2):type==='orchid'?(.65+r()*.4)*(1-layer*.25):(.65+r()*.55)*(1-layer*.19)),w=length*(type==='coral'?.4+r()*.17:type==='orchid'?.18+r()*.12:type==='plume'?.14:type==='veil'?.26+r()*.2:type==='seed'?.23:.19+r()*.26),bend=(r()-.5)*length*(type==='coral'?.35:.95);
+    const angle=type==='coral'?(i/8.3*Math.PI*2+layer*.4+(r()-.5)*.26):type==='orchid'?(i<6?i/6*Math.PI*2:i/3*Math.PI*2+.42)+(r()-.5)*.25:angles[i%5]+layer*.65+(r()-.5)*.65;
     const px=(r()-.5)*size*(type==='coral'?.1:.25),py=(r()-.5)*size*(type==='coral'?.1:.2);
-    f.petals.push({texture:petalTexture(length,w,bend,seed+i*67,f.scheme,type==='coral'),angle,x:px,y:py,phase:r()*7,scale:.75+r()*.3});
+    const accentScheme=detailed&&i%6===2?({blush:'ivory',violet:'blush',apricot:'rose'})[f.scheme]||f.scheme:f.scheme;
+    f.petals.push({texture:petalTexture(length,w,bend,seed+i*67,accentScheme,type==='coral'),angle,x:px,y:py,phase:r()*7,scale:.75+r()*.3});
     for(let j=0;j<70;j++){
       const t=.08+r()*.86,side=r()>.5?1:-1,envelope=Math.pow(Math.sin(Math.PI*t),.7)*(.72+.26*Math.sin(t*7+seed+i*67)+.13*Math.cos(t*15+(seed+i*67)*.1));
       const spread=Math.pow(r(),2)*size*.24;

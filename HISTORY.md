@@ -15,3 +15,9 @@
 两秒停留播种：增加移动渐隐粒子、藤蔓衔接及四朵初始底景花。
 
 来源：本地保存的 two-second-continuous-feedback 阶段备份。
+
+## 阶段 3：stage-03-one-second
+
+一秒停留播种：草簇、藤蔓与多色碎花交错生长，增加复杂大花的层次与尺度。
+
+来源：本地保存的 one-second-growth-field 阶段备份。
