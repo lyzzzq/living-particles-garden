@@ -9,3 +9,9 @@
 三秒停留播种：由用户种植主要花群，张掌绽放、握拳闭合。
 
 来源：本地保存的 three-second-participation 阶段备份。
+
+## 阶段 2：stage-02-two-second
+
+两秒停留播种：增加移动渐隐粒子、藤蔓衔接及四朵初始底景花。
+
+来源：本地保存的 two-second-continuous-feedback 阶段备份。
