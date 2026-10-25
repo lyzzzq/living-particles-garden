@@ -31,3 +31,11 @@ index.html 是页面，style.css 是全屏样式，sketch.js 是绘制与手势�
 推送包含历史的 main 分支和阶段标签后，在 Settings → Pages 中选择 GitHub Actions，再在 Actions 中运行 Test and deploy garden。成功后 github-pages 环境会显示网址。后续推送 main 会先检查再自动部署。
 
 流程依据：[GitHub Pages 官方说明](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。
+
+## 空灵花园音效
+
+点击「开启声音」后播放。默认音量 30%，可调音量或再次点击关闭。背景是很轻的合成风声与缓慢起伏的和声；移动速度改变沙沙声，停留一秒种花时出现清透铃音，大花使用稍丰富的音符层次。张掌产生上行铃音、背景音色渐亮，握拳产生下行音符、音色渐暗。切换到其他标签页会暂停声音，回来后可点击重新开启。
+
+声音使用 Web Audio API 实时合成，不使用歌曲、麦克风或外部音频素材。只有成功种下的新花会发声，初始底景不自动敲铃；手势音效有间隔和数量上限，避免识别抖动造成声音堆叠。浏览器会要求用户主动点击后才能播放声音，参考 [Web Audio 最佳实践](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices)。
+
+模拟检查覆盖首次点击启动、移动反馈、失去输入后恢复轻风、种花铃音、手势音效间隔、最大叠音、节点释放、音量与静音、页面隐藏暂停。实际听感仍需在浏览器试听。

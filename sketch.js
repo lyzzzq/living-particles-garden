@@ -21,6 +21,7 @@ function setup(){
   document.getElementById('mouse').addEventListener('click',()=>{mode='mouse';hands=[];filteredHand=null;dwellState.anchor=null;document.getElementById('mouse').setAttribute('aria-pressed','true');setStatus('停留 1 秒种花，大小随机 · 空格张掌绽放 · F 键握拳闭合');});
   document.getElementById('clear').addEventListener('click',resetScene);
   document.getElementById('save').addEventListener('click',saveParticleArtwork);
+  setupGardenSound();
   resetScene();
 }
 
@@ -254,15 +255,16 @@ function handleParticleInteraction(now){
   let raw=null,open=false,fist=false;
   if(mode==='hand'&&hands.length){const k=hands[0].keypoints,g=readGesture(k);open=g.open;fist=g.fist;const p=fist?k[9]:k[8];raw={x:(1-p.x/(video.elt.videoWidth||320))*width,y:p.y/(video.elt.videoHeight||240)*height};}
   else if(mode==='mouse'&&mouseX>=0&&mouseX<=width&&mouseY>=0&&mouseY<=height){raw={x:mouseX,y:mouseY};open=keyIsDown(32);fist=keyIsDown(70);}
-  if(!raw){cursorPoint=null;filteredHand=null;dwellState.anchor=null;branchAnchor=null;feedbackAnchor=null;return;}
-  const point=filteredPoint(raw,now);cursorPoint=point;
+  if(!raw){gardenSound.motion(null,now);cursorPoint=null;filteredHand=null;dwellState.anchor=null;branchAnchor=null;feedbackAnchor=null;return;}
+  const point=filteredPoint(raw,now);cursorPoint=point;gardenSound.motion(point,now);
   emitGestureFeedback(point,now);
   const gesture=fist?'fist':open?'open':'move',changed=gesture!==currentGesture;
+  if(changed)gardenSound.gesture(gesture,now);
   if(changed)setStatus(({open:'张掌 · 让你种下的花绽放',fist:'握拳 · 花序闭合',move:'停留 1 秒播种 · 大小与花型随机'})[gesture]);
   if(!open&&!fist){
     if(!dwellState.anchor||Math.hypot(point.x-dwellState.anchor.x,point.y-dwellState.anchor.y)>25)dwellState={anchor:{...point},start:now,fired:false};
     else if(!dwellState.fired&&now-dwellState.start>=DWELL_MS){
-      const planted=placeParticleFlower(point.x,point.y,'random');dwellState.fired=true;
+      const planted=placeParticleFlower(point.x,point.y,'random');dwellState.fired=true;if(planted)gardenSound.plant(planted);
       setStatus(planted?`你种下了第 ${userPlantings} 朵花。移动到新位置，停留 1 秒继续。`:'这里有点拥挤，移动到空处停留 1 秒再试。');
     }
     if(branchAnchor){const dx=point.x-branchAnchor.x,dy=point.y-branchAnchor.y,d=Math.hypot(dx,dy);if(d>28&&now-lastBranch>180){movementHeading=Math.atan2(dy,dx);placeBranchNear(point,movementHeading,now);branchAnchor={...point};}}
@@ -532,4 +534,90 @@ function drawParticleFlower(c,f){
     c.globalAlpha=.6*ease;c.fillStyle='#f4f4d7';c.beginPath();c.arc(x-s*.25,y-s*.3,Math.max(.5,s*.14),0,7);c.fill();
   }
   c.restore();
+}
+
+// 声音由浏览器实时合成，无需音频素材。点击声音按钮后才创建 AudioContext。
+class GardenSound {
+  constructor(){this.ctx=null;this.enabled=false;this.volume=.3;this.previous=null;this.lastGesture=-Infinity;this.voices=new Set();this.busy=false;}
+  init(){
+    const Audio=window.AudioContext||window.webkitAudioContext;
+    if(!Audio)throw Error('当前浏览器不支持声音，请尝试 Chrome 或 Edge。');
+    const ctx=new Audio();this.ctx=ctx;
+    this.master=ctx.createGain();this.master.gain.value=0;
+    const limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-16;limiter.knee.value=18;limiter.ratio.value=4;
+    this.master.connect(limiter);limiter.connect(ctx.destination);
+    this.input=ctx.createGain();this.input.connect(this.master);
+    const reverb=ctx.createConvolver(),impulse=ctx.createBuffer(2,Math.floor(ctx.sampleRate*2.8),ctx.sampleRate);
+    for(let ch=0;ch<2;ch++){const data=impulse.getChannelData(ch);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.pow(1-i/data.length,3)*.38;}
+    reverb.buffer=impulse;const wet=ctx.createGain();wet.gain.value=.28;this.input.connect(reverb);reverb.connect(wet);wet.connect(this.master);
+    this.airFilter=ctx.createBiquadFilter();this.airFilter.type='lowpass';this.airFilter.frequency.value=480;this.airFilter.Q.value=.45;
+    this.airGain=ctx.createGain();this.airGain.gain.value=.008;
+    const noise=ctx.createBuffer(1,ctx.sampleRate*3,ctx.sampleRate),data=noise.getChannelData(0);let smooth=0;
+    for(let i=0;i<data.length;i++){smooth=(smooth+.035*(Math.random()*2-1))/1.035;data[i]=smooth*3;}
+    this.air=ctx.createBufferSource();this.air.buffer=noise;this.air.loop=true;this.air.connect(this.airFilter);this.airFilter.connect(this.airGain);this.airGain.connect(this.input);this.air.start();
+    this.padFilter=ctx.createBiquadFilter();this.padFilter.type='lowpass';this.padFilter.frequency.value=620;
+    const pad=ctx.createGain();pad.gain.value=.035;this.padFilter.connect(pad);pad.connect(this.input);
+    this.drones=[];
+    for(const [i,hz] of [130.813,195.998,261.626].entries()){
+      const osc=ctx.createOscillator(),gain=ctx.createGain();osc.type='sine';osc.frequency.value=hz;osc.detune.value=(i-1)*4;gain.gain.value=.18;
+      const breath=ctx.createOscillator(),depth=ctx.createGain();breath.frequency.value=.065+i*.018;depth.gain.value=.055;breath.connect(depth);depth.connect(gain.gain);
+      osc.connect(gain);gain.connect(this.padFilter);osc.start();breath.start();this.drones.push(osc,breath);
+    }
+  }
+  updateUI(message){
+    const button=document.getElementById('sound');if(button){button.textContent=this.enabled?'声音：开':'开启声音';button.setAttribute('aria-pressed',String(this.enabled));}
+    const state=document.getElementById('sound-state');if(state)state.textContent=message||(this.enabled?'轻风与铃音 · 随手势呼吸':'声音已关闭');
+  }
+  async toggle(){
+    if(this.busy)return;this.busy=true;
+    try{
+      if(!this.ctx)this.init();
+      if(this.enabled){this.enabled=false;this.master.gain.setTargetAtTime(0,this.ctx.currentTime,.045);await this.ctx.suspend();}
+      else {await this.ctx.resume();if(this.ctx.state!=='running')throw Error('声音未启动，请再次点击开启声音。');this.enabled=true;this.master.gain.setTargetAtTime(this.volume*.38,this.ctx.currentTime,.35);this.previous=null;}
+      this.updateUI();
+    }catch(error){this.enabled=false;this.updateUI(error.message||'声音启动失败，请重试。');}
+    finally{this.busy=false;}
+  }
+  setVolume(value){
+    const n=Number(value);if(!Number.isFinite(n))return;this.volume=Math.max(0,Math.min(1,n/100));
+    if(this.ctx)this.master.gain.setTargetAtTime(this.enabled?this.volume*.38:0,this.ctx.currentTime,.08);
+    const output=document.getElementById('volume-value');if(output)output.textContent=Math.round(this.volume*100)+'%';
+  }
+  motion(point,now){
+    if(!this.enabled||this.ctx?.state!=='running'){this.previous=null;return;}
+    let speed=0;if(point&&this.previous){const dt=Math.max(16,now-this.previous.now);speed=Math.min(1,Math.hypot(point.x-this.previous.x,point.y-this.previous.y)/dt*1.6);}
+    this.previous=point?{...point,now}:null;
+    this.airGain.gain.setTargetAtTime(.008+speed*.11,this.ctx.currentTime,.2);
+    this.airFilter.frequency.setTargetAtTime(420+speed*1700,this.ctx.currentTime,.25);
+  }
+  bell(hz,time,strength=.1,duration=2.6){
+    if(!this.enabled||this.ctx?.state!=='running'||this.voices.size>=18)return;
+    const ctx=this.ctx,t=ctx.currentTime+time,amp=ctx.createGain(),osc=ctx.createOscillator();
+    osc.type='sine';osc.frequency.setValueAtTime(hz,t);osc.frequency.exponentialRampToValueAtTime(hz*.998,t+duration);
+    amp.gain.setValueAtTime(0,t);amp.gain.linearRampToValueAtTime(strength,t+.028);amp.gain.exponentialRampToValueAtTime(.0001,t+duration);
+    osc.connect(amp);amp.connect(this.input);this.voices.add(osc);
+    osc.onended=()=>{osc.disconnect();amp.disconnect();this.voices.delete(osc);};osc.start(t);osc.stop(t+duration+.05);
+  }
+  plant(flower){
+    if(!this.enabled)return;
+    const scale=[261.626,293.665,329.628,391.995,440,523.251],base=scale[Math.abs(flower.seed)%scale.length]*(flower.size<40?2:1);
+    this.bell(base,0,.13,3);this.bell(base*2,.055,.035,2.2);
+    if(flower.size>75){this.bell(base*1.5,.19,.07,3.8);this.bell(base*2,.38,.04,3.2);}
+  }
+  gesture(kind,now){
+    if(!this.enabled||!['open','fist'].includes(kind)||now-this.lastGesture<850)return;this.lastGesture=now;
+    const opening=kind==='open';this.padFilter.frequency.setTargetAtTime(opening?1600:260,this.ctx.currentTime,.65);
+    const notes=opening?[329.628,391.995,523.251]:[391.995,293.665,195.998];
+    notes.forEach((note,i)=>this.bell(note,i*.22,opening?.075:.05,opening?3.5:2.5));
+    this.updateUI(opening?'张掌 · 铃音缓缓展开':'握拳 · 音色渐暗、回落');
+  }
+  async hide(){
+    this.previous=null;if(this.ctx?.state==='running'){this.enabled=false;this.master.gain.value=0;await this.ctx.suspend();this.updateUI('页面已暂停声音，点击可重新开启');}
+  }
+}
+const gardenSound=new GardenSound();
+function setupGardenSound(){
+  document.getElementById('sound')?.addEventListener('click',()=>gardenSound.toggle());
+  document.getElementById('volume')?.addEventListener('input',event=>gardenSound.setVolume(event.target.value));
+  document.addEventListener?.('visibilitychange',()=>{if(document.hidden)gardenSound.hide().catch(()=>{});});
 }
