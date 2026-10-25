@@ -4,3 +4,19 @@
 
 /* 用户确认的定制字标：原图完整嵌入 HTML，仅通过 SVG 视窗裁去四周留白。 */
 .art-title{width:230px;max-width:42vw;margin:0 0 10px;line-height:0;letter-spacing:normal;mix-blend-mode:screen}.art-title svg{display:block;width:100%;height:auto;overflow:hidden}header p{margin-top:12px}@media(max-width:650px){.art-title{width:180px;max-width:54vw;margin-bottom:8px}header p{max-width:70vw;font-size:9px;letter-spacing:1px}}
+/* 用户确认的灰绿、米白操作区。 */
+:root{font-family:'Microsoft YaHei UI','Microsoft YaHei','Segoe UI',sans-serif;color:#e7e4da}
+nav{bottom:48px;gap:8px;padding:9px 12px;background:rgba(10,14,12,.8);border:1px solid rgba(179,198,168,.22);border-radius:18px;box-shadow:0 12px 40px #0006;backdrop-filter:blur(18px)}
+button,select{font-size:12px;font-weight:400;letter-spacing:1.5px;padding:10px 16px;color:#d7d8cd;border-radius:10px;transition:background .25s,color .25s,border-color .25s}
+button:hover,select:hover{background:#b4c4a414;color:#f4e9df}
+#camera{background:#b9cba417;color:#dfebd5;border:1px solid #b9cba438}
+button[aria-pressed=true]{background:#d3aab716;border:1px solid #d3aab740;color:#ecd7dd}
+button:focus-visible,select:focus-visible{outline:1px solid #bccaaa;outline-offset:3px}
+.sound-controls{bottom:116px;right:30px;padding:7px 12px;gap:10px;border:1px solid #b3c6a82c;border-radius:14px;background:#0a0e0ccc;color:#cbcdbd}
+.sound-controls button{font-size:11px;padding:7px 10px;letter-spacing:1px}.sound-controls label{color:#a8b39b;letter-spacing:1px}.sound-controls input{accent-color:#b6c4a3}
+#sound-state{color:#9ba58e;font-size:10px;letter-spacing:1px}
+.status{color:#9b9d8e;font-size:11px;letter-spacing:1px;bottom:18px}
+.toolbar,header p{color:#9b9d8e;letter-spacing:1.5px}
+#tracking-speed{color:#b5bba7;background:#0a0e0c9c;border-radius:6px}
+video{border-color:#b9cba433!important;border-radius:12px!important}
+@media(max-width:650px){nav{gap:3px;padding:7px;bottom:55px}button{font-size:10px;padding:9px}.sound-controls{bottom:170px}.status{font-size:9px}}

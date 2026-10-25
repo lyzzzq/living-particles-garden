@@ -505,35 +505,52 @@ function petalTexture(length,width,bend,seed,pink,rounded=false){
   const canvas=document.createElement('canvas');canvas.width=300;canvas.height=320;
   const c=canvas.getContext('2d'),r=seeded(seed),factor=130/Math.max(length,width*1.6);
   c.translate(150,260);c.scale(factor,factor);
-  // 稠密的粒子填满曲面，边缘逐渐松散，不以稀疏线条代替花瓣体积。
   const scheme=typeof pink==='string'?pink:pink?'blush':'leaf',shades=petalPalettes[scheme],accents=pigmentAccents[scheme];
   const depth=petalDepth[scheme],gradientTones=Array.from({length:16},(_,band)=>shades.map(shade=>band<5?mixPigment(shade,depth[0],(1-band/5)*.48):mixPigment(shade,depth[1],Math.max(0,(band-7)/8)*.62)));
-  const patches=[{t:.2+(seed%7)*.045,u:-.5,wt:.13,wu:.3,color:accents[0]},{t:.58+(seed%3)*.08,u:.32,wt:.12,wu:.22,color:accents[1]},{t:.35,u:.7,wt:.1,wu:.18,color:accents[2]}];
-  for(let i=0;i<7200;i++){
-    const t=r(),u=(r()*2-1),envelope=rounded?(1-Math.exp(-t*10))*Math.pow(1-t,.32)*(.9+.1*Math.sin(t*5+seed)):Math.pow(Math.sin(Math.PI*t),.7)*( .72+.26*Math.sin(t*7+seed)+.13*Math.cos(t*15+seed*.1));
-    const edge=r()>.9?(r()-.5)*width*.16:0;
-    const spine=bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed)*length*.1*t;
-    const x=u*width*envelope+spine+edge;
-    const y=-length*t+u*u*length*.12+Math.sin(t*4+seed)*length*.13*t+u*length*.11*t;
-    const edgeFade=Math.pow(Math.max(0,1-Math.abs(u)),.28);
-    c.globalAlpha=(.25+r()*.5)*edgeFade;c.fillStyle=gradientTones[Math.min(15,Math.floor(t*16))][Math.floor(r()*shades.length)];
-    // 色块各占一片区域，边界略微渗透，而不是随机把所有颜色搅在一起。
-    for(const patch of patches){const d=Math.pow((t-patch.t)/patch.wt,2)+Math.pow((u-patch.u)/patch.wu,2);if(d<1+(r()-.5)*.2){c.fillStyle=patch.color;break;}}
-    const size=.6+r()*.9;c.fillRect(x,y,size/factor,size/factor);
+  // 同一朵花也有不同边缘：局部卷边、柔边、完全化开的边。
+  const edgeMode=Math.abs(seed)%3,feather=edgeMode===0?.12:edgeMode===1?.32:.56;
+  const silhouette=t=>rounded?(1-Math.exp(-t*10))*Math.pow(1-t,.32)*(.9+.1*Math.sin(t*5+seed)):Math.pow(Math.sin(Math.PI*t),.7)*(.72+.26*Math.sin(t*7+seed)+.13*Math.cos(t*15+seed*.1));
+  const position=(t,u)=>({x:u*width*silhouette(t)+bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed)*length*.1*t,y:-length*t+u*u*length*.12+Math.sin(t*4+seed)*length*.13*t+u*length*.11*t});
+  const patches=[{t:.38+(seed%5)*.06,u:-.4,wt:.23,wu:.34,color:accents[0]},{t:.7,u:.35,wt:.16,wu:.29,color:accents[1]}];
+  for(let i=0;i<8800;i++){
+    const t=r(),u=r()*2-1,edge=Math.abs(u);
+    // 颜料沿曲面凝聚成不等宽的带，保留透气的疏区和靠近根部的空隙。
+    const fold=.5+.5*Math.sin(u*8+t*6+seed*.13),density=(.42+.58*fold)*(.3+.7*Math.min(1,t*4));
+    if(r()>density)continue;
+    const fringe=Math.max(0,(edge-(1-feather))/feather),softness=Math.pow(1-fringe,edgeMode===2?2.5:1.2);
+    if(r()>softness)continue;
+    const bleed=fringe*fringe*gaussian(r)*width*feather*.35,point=position(t,u);
+    c.globalAlpha=(.25+r()*.45)*softness*(.7+.3*fold);
+    const shade=Math.min(shades.length-1,Math.floor((u+1)*.5*shades.length));
+    c.fillStyle=gradientTones[Math.min(15,Math.floor(t*16))][shade];
+    for(const patch of patches){const d=Math.pow((t-patch.t)/patch.wt,2)+Math.pow((u-patch.u)/patch.wu,2);if(d<1+(r()-.5)*.14){c.fillStyle=patch.color;break;}}
+    const size=.45+r()*.85;c.fillRect(point.x+bleed,point.y,size/factor,size/factor);
   }
-  for(let vein=0;vein<9;vein++){c.globalAlpha=.12;c.strokeStyle=shades[vein%shades.length];c.lineWidth=.45/factor;c.beginPath();for(let j=0;j<35;j++){const t=j/36,u=(vein-4)/5,envelope=Math.pow(Math.sin(Math.PI*t),.72),x=u*width*envelope+bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed)*length*.1*t,y=-length*t+u*u*length*.12+Math.sin(t*4+seed)*length*.13*t+u*length*.11*t;j?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();}
-  // 丝状花瓣边缘，带局部缺口与卷曲。
-  c.globalAlpha=.35;c.strokeStyle=shades[2];c.lineWidth=.5/factor;
-  for(const side of [-1,1]){c.beginPath();c.moveTo(0,0);for(let i=1;i<30;i++){const t=i/30,w=rounded?(1-Math.exp(-t*10))*Math.pow(1-t,.32)*(.9+.1*Math.sin(t*5+seed)):Math.pow(Math.sin(Math.PI*t),.7)*(.72+.26*Math.sin(t*7+seed)+.13*Math.cos(t*15+seed*.1));const x=side*width*w+bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed)*length*.1*t,y=-length*t+length*.12+Math.sin(t*4+seed)*length*.13*t+side*length*.11*t;if(i%11===0)c.moveTo(x,y);else c.lineTo(x,y);}c.stroke();}
-  return {canvas,factor,length,width};
+  // 薄的色丝只出现在部分曲面，避免每片都带同样的描边。
+  for(let vein=0;vein<4;vein++){
+    c.globalAlpha=.07;c.strokeStyle=shades[(vein+2)%shades.length];c.lineWidth=.35/factor;c.beginPath();
+    for(let j=0;j<30;j++){const t=.18+j/40,u=(vein-1.5)/3,point=position(t,u);j?c.lineTo(point.x,point.y):c.moveTo(point.x,point.y);}c.stroke();
+  }
+  if(edgeMode===0){
+    c.globalAlpha=.2;c.strokeStyle=shades[2];c.lineWidth=.45/factor;
+    const side=seed%2?1:-1;c.beginPath();
+    for(let i=0;i<20;i++){const t=.35+i*.025,point=position(t,side);i?c.lineTo(point.x,point.y):c.moveTo(point.x,point.y);}c.stroke();
+  }
+  // 羽化花瓣的外层稀薄颜料，和主体同一色域，向外逐步消失。
+  for(let i=0;i<(edgeMode===0?75:260);i++){
+    const t=.15+r()*.8,side=r()>.5?1:-1,spread=Math.pow(r(),2)*feather*.65,point=position(t,side*(1+spread));
+    c.globalAlpha=(1-spread/(feather*.65))*.12;c.fillStyle=shades[Math.floor(r()*shades.length)];
+    const size=(.35+r()*.6)/factor;c.fillRect(point.x,point.y,size,size);
+  }
+  return {canvas,factor,length,width,edgeMode};
 }
 function splashedCore(seed,scheme){
   const canvas=document.createElement('canvas');canvas.width=120;canvas.height=120;
   const c=canvas.getContext('2d'),r=seeded(seed+777);
   const tones=scheme==='ivory'?['#d9435b','#2d73b5','#efa449','#bc66a3']:scheme==='violet'?['#e9bf3d','#d34585','#28a998','#f49259']:['#ee693f','#bc3f98','#79bb68','#e5c148'];
   c.translate(60,60);
-  for(let i=0;i<7;i++){
-    const x=gaussian(r)*15,y=gaussian(r)*13,radius=2+r()*6;
+  for(let i=0;i<4;i++){
+    const a=i*2.35+.4,x=Math.cos(a)*(14+r()*9),y=Math.sin(a)*(11+r()*8),radius=2+r()*4;
     c.fillStyle=tones[i%4];c.globalAlpha=.55+r()*.35;c.beginPath();
     for(let j=0;j<13;j++){const a=j/13*Math.PI*2,d=radius*(.6+r()*.6),px=x+Math.cos(a)*d,py=y+Math.sin(a)*d;j?c.lineTo(px,py):c.moveTo(px,py);}c.closePath();c.fill();
     for(let j=0;j<8;j++){const px=x+gaussian(r)*radius*1.3,py=y+gaussian(r)*radius*1.3;c.globalAlpha=.25+r()*.4;c.fillRect(px,py,.5+r()*1.2,.5+r()*1.2);}
@@ -562,12 +579,12 @@ function makeParticleFlower(x,y,size,type,seed,schemeOverride=null){
     const accentScheme=detailed&&i%7===2?companions[0]:detailed&&i%11===5?companions[1]:f.scheme;
     const rounded=type==='coral'||detailed&&type==='veil'&&i%3!==0||detailed&&type==='orchid'&&layer>0;
     f.petals.push({texture:petalTexture(length,w,bend,seed+i*67,accentScheme,rounded),scheme:accentScheme,angle,x:px,y:py,phase:r()*7,scale:.75+r()*.3});
-    for(let j=0;j<70;j++){
+    for(let j=0;j<(i%3===0?30:85);j++){
       const t=.08+r()*.86,side=r()>.5?1:-1,envelope=Math.pow(Math.sin(Math.PI*t),.7)*(.72+.26*Math.sin(t*7+seed+i*67)+.13*Math.cos(t*15+(seed+i*67)*.1));
-      const spread=Math.pow(r(),2)*size*.24;
+      const spread=Math.pow(r(),2)*size*(i%3===0?.1:.24);
       const ex=side*(w*envelope+spread)+bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed+i*67)*length*.1*t;
       const ey=-length*t+length*.12+Math.sin(t*4+seed+i*67)*length*.13*t+side*length*.11*t;
-      f.dust.push({x:px+ex*Math.cos(angle)-ey*Math.sin(angle),y:py+ex*Math.sin(angle)+ey*Math.cos(angle),radius:.3+r()*.9,phase:r()*7,tone:petalPalettes[f.scheme][j%5],speed:.12+r()*.25,edge:true,fade:1-spread/(size*.25)});
+      f.dust.push({x:px+ex*Math.cos(angle)-ey*Math.sin(angle),y:py+ex*Math.sin(angle)+ey*Math.cos(angle),radius:.3+r()*.9,phase:r()*7,tone:petalPalettes[accentScheme][j%5],speed:.12+r()*.25,edge:true,fade:1-spread/(size*.25)});
     }
   }
   for(let i=0;i<(airy?64:17);i++){
@@ -579,7 +596,9 @@ function makeParticleFlower(x,y,size,type,seed,schemeOverride=null){
     f.dust.push({x:Math.cos(a)*size*d,y:Math.sin(a)*size*d,radius:.65+r()*1.4,phase:r()*7,tone:i%4?petalPalettes[f.scheme][0]:'#d9db7c',speed:.15+r()*.3});
   }
   f.stamens=[];if(detailed)for(let i=0;i<11;i++){const a=r()*Math.PI*2,len=size*(.1+r()*.15);f.stamens.push({x:Math.cos(a)*len,y:Math.sin(a)*len-size*.04,bend:(r()-.5)*size*.1,head:1+r()*1.2,phase:r()*7,tone:['#e8c572','#b9d5ac','#e2a4c4'][i%3]});}
-  for(let i=0;i<(detailed?80:120);i++){const a=r()*7,d=r()*size*.2;f.points.push({x:Math.cos(a)*d,y:Math.sin(a)*d,phase:r()*7,tone:['#f6b830','#f16b9f','#c9ed51','#e45cd7','#f5d99e'][i%5],radius:.5+r()*1.4});}
+  const coreTones={violet:['#e9b84b','#df7fab','#8cbdb0'],seafoam:['#f2d17f','#9e83ba','#e9a4be'],ivory:['#dd724d','#93b19a','#c297bf'],vermilion:['#f4bf64','#9cbba2','#e4a5bf']}[f.scheme]||['#efb74f','#a4c7a0','#db94b7'];
+  const coreIslands=Array.from({length:3},(_,i)=>{const a=i*2.3+f.phase;return {x:Math.cos(a)*size*.13,y:Math.sin(a)*size*.11};});
+  for(let i=0;i<(detailed?48:42);i++){const island=coreIslands[i%3];f.points.push({x:island.x+gaussian(r)*size*.023,y:island.y+gaussian(r)*size*.023,phase:r()*7,tone:coreTones[i%3],radius:.4+r()*1.1});}
   f.ink=splashedCore(seed,f.scheme);
   f.bubbles=[];
   for(let i=0;i<9+Math.floor(r()*6);i++){
@@ -609,7 +628,7 @@ function drawParticleFlower(c,f){
     c.restore();
   }
   for(const p of f.points){c.globalAlpha=(.6+Math.sin(sceneTime*.7+p.phase)*.22)*opacity;c.fillStyle=p.tone;const s=p.radius;c.fillRect(p.x*(.2+ease*.8),p.y*(.3+ease*.7),s,s);}
-  c.globalAlpha=((.25+ease*.7))*opacity;const inkSize=f.size*.65;c.drawImage(f.ink,-inkSize/2,-inkSize/2,inkSize,inkSize);
+  c.globalAlpha=((.25+ease*.7))*opacity;const inkSize=f.size*.52;c.drawImage(f.ink,-inkSize/2,-inkSize/2,inkSize,inkSize);
   for(const stamen of f.stamens||[]){
     const x=stamen.x*ease+Math.sin(sceneTime*.5+stamen.phase),y=stamen.y*ease;
     c.globalAlpha=.5*ease*opacity;c.strokeStyle=stamen.tone;c.lineWidth=.65;c.beginPath();c.moveTo(0,0);c.bezierCurveTo(stamen.bend,-f.size*.025,x+stamen.bend,y*.75,x,y);c.stroke();
