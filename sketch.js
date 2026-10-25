@@ -546,8 +546,8 @@ function petalTexture(length,width,bend,seed,pink,rounded=false){
   const depth=petalDepth[scheme],gradientTones=Array.from({length:16},(_,band)=>shades.map(shade=>band<5?mixPigment(shade,depth[0],(1-band/5)*.48):mixPigment(shade,depth[1],Math.max(0,(band-7)/8)*.62)));
   // 同一朵花也有不同边缘：局部卷边、柔边、完全化开的边。
   const edgeMode=Math.abs(seed)%3,feather=edgeMode===0?.12:edgeMode===1?.32:.56;
-  const silhouette=t=>rounded?(1-Math.exp(-t*10))*Math.pow(1-t,.32)*(.9+.1*Math.sin(t*5+seed)):Math.pow(Math.sin(Math.PI*t),.7)*(.72+.26*Math.sin(t*7+seed)+.13*Math.cos(t*15+seed*.1));
-  const position=(t,u)=>({x:u*width*silhouette(t)+bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed)*length*.1*t,y:-length*t+u*u*length*.12+Math.sin(t*4+seed)*length*.13*t+u*length*.11*t});
+  const silhouette=t=>rounded?(1-Math.exp(-t*12))*Math.pow(Math.sin((.07+t*.68)*Math.PI),.65)*(1+.08*Math.sin(t*5+seed)):Math.pow(Math.sin(Math.PI*t),.7)*(.72+.26*Math.sin(t*7+seed)+.13*Math.cos(t*15+seed*.1));
+  const position=(t,u)=>({x:u*width*silhouette(t)+bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed)*length*.1*t,y:-length*t+u*u*length*(rounded?.24:.12)+Math.sin(t*4+seed)*length*.13*t+u*length*.11*t});
   const patches=[{t:.38+(seed%5)*.06,u:-.4,wt:.23,wu:.34,color:accents[0]},{t:.7,u:.35,wt:.16,wu:.29,color:accents[1]}];
   const grainBudget=Math.min(8800,Math.max(900,Math.ceil(length*width*.85)));
   for(let i=0;i<grainBudget;i++){
@@ -558,11 +558,11 @@ function petalTexture(length,width,bend,seed,pink,rounded=false){
     const fringe=Math.max(0,(edge-(1-feather))/feather),softness=Math.pow(1-fringe,edgeMode===2?2.5:1.2);
     if(r()>softness)continue;
     const bleed=fringe*fringe*gaussian(r)*width*feather*.35,point=position(t,u);
-    c.globalAlpha=(.25+r()*.45)*softness*(.7+.3*fold);
+    c.globalAlpha=(.32+r()*.5)*softness*(.7+.3*fold);
     const shade=Math.min(shades.length-1,Math.floor((u+1)*.5*shades.length));
     c.fillStyle=gradientTones[Math.min(15,Math.floor(t*16))][shade];
     for(const patch of patches){const d=Math.pow((t-patch.t)/patch.wt,2)+Math.pow((u-patch.u)/patch.wu,2);if(d<1+(r()-.5)*.14){c.fillStyle=patch.color;break;}}
-    const size=.45+r()*.85;c.fillRect(point.x+bleed,point.y,size/factor,size/factor);
+    const size=.55+r()*.9;c.fillRect(point.x+bleed,point.y,size/factor,size/factor);
   }
   // 薄的色丝只出现在部分曲面，避免每片都带同样的描边。
   for(let vein=0;vein<4;vein++){
@@ -606,16 +606,16 @@ function makeParticleFlower(x,y,size,type,seed,schemeOverride=null){
   f.scheme=schemeOverride||randomFlowerScheme(type,seed);
   f.filaments=[];
   const airy=type==='drift'||type==='plume'||type==='seed';
-  const detailed=size>75,form={cup:{count:16,width:.5,length:.84,bend:.55},ribbon:{count:24,width:.12,length:1.05,bend:1.4},aster:{count:39,width:.13,length:.83,bend:.42},iris:{count:12,width:.37,length:.93,bend:.85}}[type];const count=form?(detailed?form.count:7):type==='orchid'?(detailed?17:9):type==='seed'?1:airy?2:type==='coral'?(detailed?33:23):(detailed?19:5);
+  const detailed=size>75,form={cup:{count:16,width:.5,length:.84,bend:.55},ribbon:{count:24,width:.26,length:.85,bend:.9},aster:{count:39,width:.13,length:.83,bend:.42},iris:{count:12,width:.37,length:.93,bend:.85}}[type];const count=form?(detailed?form.count:7):type==='orchid'?(detailed?21:9):type==='seed'?1:airy?2:type==='coral'?(detailed?33:23):(detailed?19:5);
   const angles=type==='orchid'?[-1.8,-.25,1.25,2.4]:type==='seed'?[-.35]:type==='coral'?[-2.3,-1.5,-.6,.4,1.7,2.7,3.4]:[-2.4,-.95,-.1,1.2,2.7];
   for(let i=0;i<count;i++){
     const layer=form?Math.floor(i/(form.count/3)):type==='coral'?(i<12?0:i<24?1:2):type==='orchid'?(i<7?0:i<13?1:2):detailed?Math.floor(i/7):0;
-    const length=size*(form?form.length*(.85+r()*.25)*(1-layer*.18):type==='coral'?(.66+r()*.17)*(1-layer*.2):type==='orchid'?(.65+r()*.4)*(1-layer*.25):(.65+r()*.55)*(1-layer*.19)),w=length*(form?form.width*(.8+r()*.4):type==='coral'?.4+r()*.17:type==='orchid'?.18+r()*.12:type==='plume'?.14:type==='veil'?.26+r()*.2:type==='seed'?.23:.19+r()*.26),bend=(r()-.5)*length*(form?form.bend:type==='coral'?.35:.95);
+    const length=size*(form?form.length*(.85+r()*.25)*(1-layer*.18):type==='coral'?(.66+r()*.17)*(1-layer*.2):type==='orchid'?(.62+r()*.18)*(1-layer*.22):(.65+r()*.55)*(1-layer*.19)),w=length*(form?form.width*(.8+r()*.4):type==='coral'?.4+r()*.17:type==='orchid'?.48+r()*.15:type==='plume'?.14:type==='veil'?.26+r()*.2:type==='seed'?.23:.19+r()*.26),bend=(r()-.5)*length*(form?form.bend:type==='coral'?.35:.95);
     const angle=form?(type==='cup'?-.95+(i%6)/5*1.9+layer*.15:type==='ribbon'?-.8+(i%8)/7*3.4+layer*.24:type==='iris'?(i%3)*Math.PI*2/3+layer*.3:(i%13)/13*Math.PI*2+layer*.22)+(r()-.5)*.3:type==='coral'?(i/8.3*Math.PI*2+layer*.4+(r()-.5)*.26):type==='orchid'?(i<6?i/6*Math.PI*2:i/3*Math.PI*2+.42)+(r()-.5)*.25:angles[i%5]+layer*.65+(r()-.5)*.65;
     const px=(r()-.5)*size*(type==='coral'?.1:.25),py=(r()-.5)*size*(type==='coral'?.1:.2);
     const companions={azure:['ivory','seafoam'],blush:['ivory','seafoam'],violet:['blush','seafoam'],ivory:['apricot','seafoam'],vermilion:['apricot','ivory'],seafoam:['ivory','violet'],apricot:['ivory','blush'],rose:['ivory','violet'],amber:['apricot','ivory']}[f.scheme]||[f.scheme,f.scheme];
     const accentScheme=detailed&&i%7===2?companions[0]:detailed&&i%11===5?companions[1]:f.scheme;
-    const rounded=type==='cup'||type==='iris'&&layer>0||type==='coral'||detailed&&type==='veil'&&i%3!==0||detailed&&type==='orchid'&&layer>0;
+    const rounded=type==='cup'||type==='iris'||type==='aster'||type==='coral'||type==='ribbon'&&i%4!==0||detailed&&type==='veil'||type==='orchid';
     f.petals.push({texture:petalTexture(length,w,bend,seed+i*67,accentScheme,rounded),scheme:accentScheme,angle,x:px,y:py,phase:r()*7,scale:.75+r()*.3});
     for(let j=0;j<(i%3===0?30:85);j++){
       const t=.08+r()*.86,side=r()>.5?1:-1,envelope=Math.pow(Math.sin(Math.PI*t),.7)*(.72+.26*Math.sin(t*7+seed+i*67)+.13*Math.cos(t*15+(seed+i*67)*.1));
@@ -625,8 +625,8 @@ function makeParticleFlower(x,y,size,type,seed,schemeOverride=null){
       f.dust.push({x:px+ex*Math.cos(angle)-ey*Math.sin(angle),y:py+ex*Math.sin(angle)+ey*Math.cos(angle),radius:.3+r()*.9,phase:r()*7,tone:petalPalettes[accentScheme][j%5],speed:.12+r()*.25,edge:true,fade:1-spread/(size*.25)});
     }
   }
-  for(let i=0;i<(airy?64:17);i++){
-    const a=-3.2+r()*5.5,len=size*(.55+r()*.6),bend=(r()-.5)*size*.35;
+  for(let i=0;i<(airy?64:detailed?7:17);i++){
+    const a=-3.2+r()*5.5,len=size*(detailed?.2+r()*.24:.55+r()*.6),bend=(r()-.5)*size*.35;
     f.filaments.push({x:Math.cos(a)*len,y:Math.sin(a)*len,bend,phase:r()*7,tone:petalPalettes[f.scheme][i%5]});
   }
   for(let i=0;i<220;i++){
@@ -653,7 +653,7 @@ function drawParticleFlower(c,f){
   c.scale(1+response*.06,1+response*.06);
   for(const thread of f.filaments){
     const sway=Math.sin(sceneTime*.45+thread.phase)*f.size*.025;
-    c.globalAlpha=(.18+ease*.2)*opacity;c.strokeStyle=thread.tone;c.lineWidth=.45;c.beginPath();c.moveTo(0,0);c.bezierCurveTo(thread.x*.3+thread.bend,thread.y*.2,thread.x*.75+sway,thread.y*.8,thread.x*ease+sway,thread.y*(.2+ease*.8));c.stroke();
+    c.globalAlpha=(f.size>75?.08+ease*.08:.18+ease*.2)*opacity;c.strokeStyle=thread.tone;c.lineWidth=.45;c.beginPath();c.moveTo(0,0);c.bezierCurveTo(thread.x*.3+thread.bend,thread.y*.2,thread.x*.75+sway,thread.y*.8,thread.x*ease+sway,thread.y*(.2+ease*.8));c.stroke();
   }
   for(const petal of f.petals){
     const wind=Math.sin(sceneTime*.55+petal.phase)*.055+Math.sin(sceneTime*.23+f.phase)*.025;
