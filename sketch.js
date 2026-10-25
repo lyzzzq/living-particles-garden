@@ -17,8 +17,9 @@ let cursorPoint = null;
 function setup(){
   const canvas=createCanvas(window.innerWidth,window.innerHeight);
   canvas.parent('canvas-container');pixelDensity(1);frameRate(45);
+  canvas.elt.addEventListener('pointerdown',event=>{if(mode==='mouse'&&event.button===0)pendingMousePlant={x:event.clientX,y:event.clientY};});
   document.getElementById('camera').addEventListener('click',startCamera);
-  document.getElementById('mouse').addEventListener('click',()=>{mode='mouse';hands=[];filteredHand=null;dwellState.anchor=null;document.getElementById('mouse').setAttribute('aria-pressed','true');setStatus('停留 1 秒种花，大小随机 · 空格张掌绽放 · F 键握拳闭合');});
+  document.getElementById('mouse').addEventListener('click',()=>{mode='mouse';hands=[];filteredHand=null;resetPlantGesture();document.getElementById('mouse').setAttribute('aria-pressed','true');updateParticleCount();setStatus('点击种花，大小随机 · 空格张掌绽放 · F 键握拳闭合');});
   document.getElementById('clear').addEventListener('click',resetScene);
   document.getElementById('save').addEventListener('click',saveParticleArtwork);
   setupGardenSound();
@@ -58,11 +59,11 @@ async function startCamera() {
     const tracker=await loadHandTracker(video.elt);
     handPose=tracker.model;hands=tracker.results;trackingRuntime=tracker.runtime;
     detectionFrames=1;
-    cameraReady = true; mode = 'hand';
+    cameraReady = true; mode = 'hand';resetPlantGesture();updateParticleCount();
     document.getElementById('mouse')?.setAttribute('aria-pressed', 'false');
     if (button) button.textContent = '重新识别';
     lastDetectionState='';
-    setStatus(hands.length?'已找到手：张掌让花绽放，握拳闭合。':'识别运行正常，尚未找到手。请将手掌放入右上角画面。');
+    setStatus(hands.length?'已找到手：拇指食指捏合种花，张掌绽放，握拳闭合。':'识别运行正常，尚未找到手。请将手掌放入右上角画面。');
     detectionLoop(trackingSession);
   } catch (error) {
     if(!cameraPreviewReady){cameraStream?.getTracks().forEach(track=>track.stop());video?.remove();video=null;}
@@ -104,7 +105,7 @@ async function detectionLoop(session) {
     paintTrackingOverlay();
     if(mode==='hand') {
       const state=hands.length?'found':'searching';
-      if(state!==lastDetectionState){lastDetectionState=state;setStatus(hands.length?'已识别到手 · 停留种花 · 张掌绽放 · 握拳闭合':'识别运行中，未找到手。请把手掌完整放入镜头，掌心朝向摄像头。');}
+      if(state!==lastDetectionState){lastDetectionState=state;setStatus(hands.length?'已识别到手 · 捏合播种 · 张掌绽放 · 握拳闭合':'识别运行中，未找到手。请把手掌完整放入镜头，掌心朝向摄像头。');}
     }
     // 保留单次推理在途，完成后立即让出主线程并处理最新视频帧，不累积旧帧。
     setTimeout(()=>detectionLoop(session),0);
@@ -128,14 +129,15 @@ function paintTrackingOverlay() {
 
 
 function readGesture(k){
-  if(!k || k.length<21)return {pinching:false,open:false,fist:false};
+  if(!k || k.length<21)return {pinching:false,pinchReleased:false,open:false,fist:false};
   const wrist=k[0],palm=max(12,dist(wrist.x,wrist.y,k[9].x,k[9].y));
   const extended=[8,12,16,20].filter(i=>dist(k[i].x,k[i].y,wrist.x,wrist.y)>dist(k[i-2].x,k[i-2].y,wrist.x,wrist.y)*1.055).length;
   const curled=[8,12,16,20].filter(i=>dist(k[i].x,k[i].y,wrist.x,wrist.y)<dist(k[i-2].x,k[i-2].y,wrist.x,wrist.y)*.95).length;
   const fist=curled>=3 && dist(k[8].x,k[8].y,wrist.x,wrist.y)<palm*1.15;
-  const pinching=!fist && dist(k[8].x,k[8].y,k[4].x,k[4].y)<palm*.45;
+  const pinchRatio=dist(k[8].x,k[8].y,k[4].x,k[4].y)/palm;
+  const pinching=!fist&&pinchRatio<.4,pinchReleased=!fist&&pinchRatio>.65;
   const spread=dist(k[8].x,k[8].y,k[20].x,k[20].y)>palm*.4;
-  return {fist,pinching,open:!fist&&extended>=3&&(spread||!pinching)};
+  return {fist,pinching,pinchReleased,open:!fist&&pinchReleased&&extended>=3&&spread};
 }
 function butterflyMotion(state,point,now){
   const dt=Math.min(.08,Math.max(.001,(now-(state.time??now-16))/1000));state.time=now;
@@ -150,8 +152,9 @@ function butterflyMotion(state,point,now){
   return activity;
 }
 // 黑底粒子植物：手势改变生长状态，作品自身保留呼吸与流动。
-let stems=[], ambient=[], vineLinks=[], filteredHand=null, dwellState={anchor:null,start:0,fired:false},userPlantings=0;
-const DWELL_MS=1000;
+let stems=[], ambient=[], vineLinks=[], filteredHand=null,userPlantings=0;
+let pendingMousePlant=null;
+let plantGesture={armed:false,lastAttempt:-Infinity,flashUntil:0,message:''};
 let gardenSteps=0;
 const GARDEN_FADE_SECONDS=4;
 function isGrowing(item){return item.retireAt==null;}
@@ -196,7 +199,7 @@ const palettePairs={mixed:[['#bcdbef','#efc6d9'],['#ddd0a7','#d1e7f5'],['#d4bbec
 function seeded(seed){return ()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};}
 function gaussian(r){return Math.sqrt(-2*Math.log(Math.max(.0001,r())))*Math.cos(6.283185*r());}
 function resetScene(){
-  gardenSteps=0;flowers=[];stems=[];ambient=[];dwellState={anchor:null,start:0,fired:false};branchAnchor=null;lastBloomPoint=null;userPlantings=0;currentGesture='move';gestureMotes=[];feedbackAnchor=null;liveVineTip=null;liveVineLength=0;lastBranch=0;
+  gardenSteps=0;flowers=[];stems=[];ambient=[];resetPlantGesture();branchAnchor=null;lastBloomPoint=null;userPlantings=0;currentGesture='move';gestureMotes=[];feedbackAnchor=null;liveVineTip=null;liveVineLength=0;lastBranch=0;
   const r=seeded(7103);
   for(let i=0;i<130;i++)ambient.push({x:r()*width,y:r()*height,phase:r()*7,size:.3+r()*.7});
   const scale=Math.min(1.3,Math.min(width/1000,height/700));
@@ -278,32 +281,50 @@ function filteredPoint(raw,now){
   if(d>12){const alpha=1-Math.exp(-dt/(d>120?.08:.16)),gain=(d-7)/d;filteredHand.x+=dx*alpha*gain;filteredHand.y+=dy*alpha*gain;}
   return {x:filteredHand.x,y:filteredHand.y};
 }
+function resetPlantGesture(){pendingMousePlant=null;plantGesture={armed:false,lastAttempt:-Infinity,flashUntil:0,message:''};}
+function triggerPlantGesture(pressed,released,point,now){
+  if(released){plantGesture.armed=true;return null;}
+  if(!pressed||!plantGesture.armed||now-plantGesture.lastAttempt<350)return null;
+  // 一次捏合只消费一次；识别短暂丢手也不会重新解锁，必须明确松开。
+  plantGesture.armed=false;plantGesture.lastAttempt=now;advanceGardenStep(3);
+  const planted=placeParticleFlower(point.x,point.y,'random');
+  if(planted)gardenSound.plant(planted);
+  plantGesture.flashUntil=now+1000;
+  plantGesture.message=planted?(mode==='mouse'?'已种下 · 点击继续':'已种下 · 松开再捏'):'这里有点拥挤 · 换个位置再试';
+  setStatus(planted?`你种下了第 ${userPlantings} 朵花。松开后再次捏合，即可继续。`:'这里正在腾出位置，松开后换个位置再捏。');
+  return planted;
+}
 function handleParticleInteraction(now){
-  let raw=null,open=false,fist=false;
-  if(mode==='hand'&&hands.length){const k=hands[0].keypoints,g=readGesture(k);open=g.open;fist=g.fist;const p=fist?k[9]:k[8];raw={x:(1-p.x/(video.elt.videoWidth||320))*width,y:p.y/(video.elt.videoHeight||240)*height};}
-  else if(mode==='mouse'&&mouseX>=0&&mouseX<=width&&mouseY>=0&&mouseY<=height&&!document.elementFromPoint?.(mouseX,mouseY)?.closest('button,select,input,nav,.sound-controls')){raw={x:mouseX,y:mouseY};open=keyIsDown(32);fist=keyIsDown(70);}
-  if(!raw){gardenSound.motion(null,now);cursorPoint=null;filteredHand=null;dwellState.anchor=null;branchAnchor=null;feedbackAnchor=null;return;}
-  const point=filteredPoint(raw,now);cursorPoint=point;gardenSound.motion(point,now);
-  emitGestureFeedback(point,now);
-  const gesture=fist?'fist':open?'open':'move',changed=gesture!==currentGesture;
+  let raw=null,open=false,fist=false,pinching=false,released=false;
+  const mouseDown=typeof mouseIsPressed!=='undefined'&&mouseIsPressed&&(typeof mouseButton==='undefined'||mouseButton==='left');
+  if(mode==='hand'&&hands.length){
+    const k=hands[0].keypoints,g=readGesture(k);open=g.open;fist=g.fist;pinching=g.pinching;released=g.pinchReleased;
+    const p=fist?k[9]:k[8];raw={x:(1-p.x/(video.elt.videoWidth||320))*width,y:p.y/(video.elt.videoHeight||240)*height};
+  }else if(mode==='mouse'&&mouseX>=0&&mouseX<=width&&mouseY>=0&&mouseY<=height&&!document.elementFromPoint?.(mouseX,mouseY)?.closest('button,select,input,nav,.sound-controls')){
+    raw=pendingMousePlant?{...pendingMousePlant}:{x:mouseX,y:mouseY};if(pendingMousePlant)filteredHand=null;open=keyIsDown(32);fist=keyIsDown(70);pinching=Boolean(mouseDown||pendingMousePlant);released=!mouseDown&&!pendingMousePlant;
+  }
+  if(!raw){
+    pendingMousePlant=null;
+    if(mode==='mouse')plantGesture.armed=!mouseDown;
+    gardenSound.motion(null,now);cursorPoint=null;filteredHand=null;branchAnchor=null;feedbackAnchor=null;return;
+  }
+  const point=filteredPoint(raw,now);cursorPoint=point;gardenSound.motion(point,now);emitGestureFeedback(point,now);
+  const gesture=fist?'fist':pinching?'pinch':open?'open':'move',changed=gesture!==currentGesture;
   if(changed)gardenSound.gesture(gesture,now);
-  if(changed)setStatus(({open:'张掌 · 让你种下的花绽放',fist:'握拳 · 花序闭合',move:'停留 1 秒播种 · 大小与花型随机'})[gesture]);
+  if(changed)setStatus(({open:'张掌 · 让你种下的花绽放',fist:'握拳 · 花序闭合',pinch:'捏合播种 · 松开后可再次种花',move:mode==='mouse'?'点击种花 · 移动引藤 · 空格绽放 · F 闭合':'捏合一下种一朵 · 移动引藤 · 张掌绽放 · 握拳闭合'})[gesture]);
+  triggerPlantGesture(pinching&&!open&&!fist,released,point,now);pendingMousePlant=null;
   if(!open&&!fist){
-    if(!dwellState.anchor||Math.hypot(point.x-dwellState.anchor.x,point.y-dwellState.anchor.y)>25)dwellState={anchor:{...point},start:now,fired:false};
-    else if(!dwellState.fired&&now-dwellState.start>=DWELL_MS){
-      advanceGardenStep(3);const planted=placeParticleFlower(point.x,point.y,'random');dwellState.fired=Boolean(planted);if(planted)gardenSound.plant(planted);else dwellState.start=now;
-      setStatus(planted?`你种下了第 ${userPlantings} 朵花。移动到新位置，停留 1 秒继续。`:'正在腾出位置，稍等一秒，或换个位置继续。');
-    }
     if(branchAnchor){const dx=point.x-branchAnchor.x,dy=point.y-branchAnchor.y,d=Math.hypot(dx,dy);if(d>28&&now-lastBranch>180){movementHeading=Math.atan2(dy,dx);advanceGardenStep();placeBranchNear(point,movementHeading,now);branchAnchor={...point};}}
     else branchAnchor={...point};
   }else{
-    dwellState.anchor=null;branchAnchor={...point};
-    const nearby=flowers.filter(f=>Math.hypot(f.x-point.x,f.y-point.y)<340);
-    const targets=nearby.length?nearby:[...flowers].sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y)).slice(0,1);
+    branchAnchor={...point};
+    const active=flowers.filter(isGrowing),nearby=active.filter(f=>Math.hypot(f.x-point.x,f.y-point.y)<340);
+    const targets=nearby.length?nearby:active.sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y)).slice(0,1);
     for(const f of targets){const previous=f.goal;f.goal=fist?0:1;f.closed=fist;if(open){f.autoAt=0;if(changed||previous<1)f.responsePulse=sceneTime;}}
   }
   currentGesture=gesture;
 }
+
 function placeParticleFlower(x,y,large,retry=false){
   if(x<25||x>width-25||y<70||y>height-75||x<width*.31&&y<height*.3)return null;
   maintainGarden();
@@ -397,10 +418,11 @@ function drawParticleButterfly(now){
     }c.restore();
   }
   if(currentGesture==='open'||currentGesture==='fist'){c.globalAlpha=.75;c.font='11px sans-serif';c.fillStyle='#b1bed3';c.fillText(currentGesture==='open'?'张掌 · 绽放':'握拳 · 闭合',32,-15);}
-  else if(dwellState.anchor){
-    const elapsed=Math.max(0,now-dwellState.start),progress=Math.min(1,elapsed/DWELL_MS);
-    c.globalAlpha=.65;c.lineWidth=1.4;c.strokeStyle='#c3d7b2';c.beginPath();c.arc(0,0,34,-Math.PI/2,-Math.PI/2+Math.PI*2*progress);c.stroke();
-    c.font='11px sans-serif';c.fillStyle='#b8c8b0';c.fillText(dwellState.fired?'已播种，移动继续':`再停留 ${Math.max(1,Math.ceil((DWELL_MS-elapsed)/1000))} 秒`,40,3);
+  else {
+    const recent=now<plantGesture.flashUntil;
+    if(recent){c.globalAlpha=Math.max(0,(plantGesture.flashUntil-now)/1000)*.55;c.strokeStyle='#c3d7b2';c.lineWidth=1;c.beginPath();c.arc(0,0,24+(1-(plantGesture.flashUntil-now)/1000)*15,0,Math.PI*2);c.stroke();}
+    c.globalAlpha=.65;c.font='10px sans-serif';c.fillStyle='#b8c8b0';
+    c.fillText(recent?plantGesture.message:mode==='mouse'?'点击种花':plantGesture.armed?'捏合种花':'松开手指，准备播种',32,3);
   }
   c.restore();
 }
@@ -417,7 +439,7 @@ function drawFloatingPollen(c){
   }c.restore();
 }
 function saveParticleArtwork(){drawParticleArtwork();saveCanvas('living-particles','png');}
-function updateParticleCount(){const e=document.getElementById('count');if(e)e.textContent=`你种下了 ${userPlantings} 朵花 · ${stems.filter(isGrowing).length} 组枝影`;const hint=document.querySelector?.('header p');if(hint)hint.textContent=userPlantings?'这座花园，正沿着你的动作生长。':'停留一秒，种下你的第一朵花。';}
+function updateParticleCount(){const e=document.getElementById('count');if(e)e.textContent=`你种下了 ${userPlantings} 朵花 · ${stems.filter(isGrowing).length} 组枝影`;const hint=document.querySelector?.('header p');if(hint)hint.textContent=userPlantings?'这座花园，正沿着你的动作生长。':(mode==='hand'?'捏合一下，种下你的第一朵花。':'点击画面，种下你的第一朵花。');}
 function windowResized(){const ow=width,oh=height;resizeCanvas(window.innerWidth,window.innerHeight);for(const f of flowers){f.x*=width/ow;f.y*=height/oh;}for(const s of stems){s.x*=width/ow;s.y*=height/oh;if(s.end){s.end.x*=width/ow;s.end.y*=height/oh;}}for(const p of ambient){p.x*=width/ow;p.y*=height/oh;}filteredHand=null;branchAnchor=null;feedbackAnchor=null;liveVineTip=null;liveVineLength=0;}
 window.addEventListener('pagehide',()=>{trackingSession++;cameraReady=false;handPose?.detectStop();cameraStream?.getTracks().forEach(track=>track.stop());});
 

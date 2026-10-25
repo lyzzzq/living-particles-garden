@@ -1,12 +1,13 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');let now=1000;const keys=new Set();
 const pen=new Proxy({}, {get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)});pen.createRadialGradient=()=>({addColorStop(){}});
-const ctx={window:{innerWidth:1000,innerHeight:700,addEventListener(){}},document:{getElementById:()=>null,createElement:()=>({width:300,height:320,getContext:()=>pen})},drawingContext:pen,width:1000,height:700,millis:()=>now,Math,lerp:(a,b,t)=>a+(b-a)*t,max:Math.max,min:Math.min,dist:(x,y,a,b)=>Math.hypot(x-a,y-b),mouseX:500,mouseY:350,keyIsDown:k=>keys.has(k),saveCanvas:()=>{}};
+const ctx={window:{innerWidth:1000,innerHeight:700,addEventListener(){}},document:{getElementById:()=>null,createElement:()=>({width:300,height:320,getContext:()=>pen})},drawingContext:pen,width:1000,height:700,millis:()=>now,Math,lerp:(a,b,t)=>a+(b-a)*t,max:Math.max,min:Math.min,dist:(x,y,a,b)=>Math.hypot(x-a,y-b),mouseX:500,mouseY:350,mouseIsPressed:false,keyIsDown:k=>keys.has(k),saveCanvas:()=>{}};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync(require('path').join(__dirname,'..','sketch.js'),'utf8'),ctx);
 vm.runInContext('resetScene();handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('flowers.length',ctx),4);assert(vm.runInContext('flowers.every(f=>f.size<=60)',ctx));
-now=1999;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),0);
-now=2001;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),1);
-now=10000;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),1);
-ctx.mouseX=730;ctx.mouseY=330;vm.runInContext('filteredHand=null;handleParticleInteraction(millis())',ctx);now+=1001;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),2);
+now=10000;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),0,'Hovering must never plant');
+ctx.mouseIsPressed=true;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),1);
+now=12000;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),1,'Holding a click must not repeat');
+ctx.mouseIsPressed=false;ctx.mouseX=730;ctx.mouseY=330;vm.runInContext('filteredHand=null;handleParticleInteraction(millis())',ctx);now+=500;ctx.mouseIsPressed=true;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),2);
+ctx.mouseIsPressed=false;
 const count=vm.runInContext('flowers.length',ctx);keys.add(32);now+=100;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('flowers.length',ctx),count);assert(vm.runInContext('flowers.some(f=>f.goal===1)',ctx));
 const sizes=[];for(let i=0;i<20;i++){ctx.tx=330+i*17;ctx.ty=330+(i%4)*27;vm.runInContext('flowers=[];stems=[];vineLinks=[];userPlantings=0',ctx);const f=vm.runInContext('placeParticleFlower(tx,ty,"random")',ctx);if(f)sizes.push(f.size);}
 assert(Math.min(...sizes)<38&&Math.max(...sizes)>80,'Missing large/small variation');
@@ -24,5 +25,5 @@ vm.runInContext('flowers=[];stems=[];liveVineTip=null;for(let i=0;i<14;i++)place
 assert(vm.runInContext('new Set(stems.map(s=>s.variant)).size>=3',ctx),'Need grass, vines and flower patches');
 assert(vm.runInContext('new Set(stems.flatMap(s=>s.flowersOnVine.map(b=>b.form))).size>=3',ctx),'Need different little flower forms');
 assert(vm.runInContext('makeParticleFlower(500,350,145,"veil",12).petals.length>=15 && makeParticleFlower(500,350,145,"coral",12).petals.length>=29',ctx),'Large flowers need detail');
-ctx.document.elementFromPoint=()=>({closest:()=>true});vm.runInContext('handleParticleInteraction(millis())',ctx);assert(vm.runInContext('cursorPoint===null && dwellState.anchor===null',ctx),'Hovering controls must not plant behind the UI');
-console.log('PASS: no planting over controls;  three growth forms, varied little blossoms, layered large flowers;  connected varied vines, movement feedback and expiry;  no spawn before 1 second, one flower after dwell, no repeated stationary planting, new-location growth, open palm adds no flowers, random large/small sizes, apricot multi-tone rosette, cursor-free export.');
+ctx.document.elementFromPoint=()=>({closest:()=>true});vm.runInContext('handleParticleInteraction(millis())',ctx);assert(vm.runInContext('cursorPoint===null',ctx),'Hovering controls must not plant behind the UI');
+console.log('PASS: no planting over controls;  three growth forms, varied little blossoms, layered large flowers;  connected varied vines, movement feedback and expiry;  no hover planting, one flower per click, holding never repeats, release allows next click, open palm adds no flowers, random large/small sizes, apricot multi-tone rosette, cursor-free export.');

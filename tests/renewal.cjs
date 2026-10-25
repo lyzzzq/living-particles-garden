@@ -12,7 +12,9 @@ for(let i=0;i<260;i++){
 assert(early>0&&late>0,'Flowers must still grow late in a long session');assert(vm.runInContext('userPlantings>14',ctx),'Cumulative creations must exceed visible budget');assert(vm.runInContext('stems.length<90 && flowers.length<30',ctx),'Faded objects must release their textures/references');
 vm.runInContext('flowers=[];stems=[];gardenSteps=0;sceneTime=0;var oldFlower=makeParticleFlower(500,350,40,"veil",8);flowers.push(oldFlower);retirePlant(oldFlower)',ctx);assert.equal(vm.runInContext('plantOpacity(oldFlower)',ctx),1);
 vm.runInContext('sceneTime=2',ctx);assert.equal(vm.runInContext('plantOpacity(oldFlower)',ctx),.5);vm.runInContext('sceneTime=4;pruneGarden()',ctx);assert.equal(vm.runInContext('flowers.length',ctx),0);
-// 即使原地一度无法种花，也应继续计时重试，而不是永久锁死。
-vm.runInContext('gardenSteps=0;filteredHand=null;dwellState={anchor:null,start:0,fired:false};var actualPlant=placeParticleFlower;placeParticleFlower=()=>null;handleParticleInteraction(millis())',ctx);now=2101;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('dwellState.fired',ctx),false);
-vm.runInContext('placeParticleFlower=actualPlant',ctx);now=3202;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('dwellState.fired',ctx),true,'Stationary retry should eventually plant');
-console.log('PASS: 260-step continued growth, late flower creation, bounded active plants, gradual fade and cleanup, failed dwell retries without moving.');
+// 失败的按下也只消费一次，松开后可以再次播种。
+vm.runInContext('gardenSteps=0;filteredHand=null;resetPlantGesture();var actualPlant=placeParticleFlower;placeParticleFlower=()=>null;handleParticleInteraction(millis())',ctx);
+ctx.mouseIsPressed=true;now=2101;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('plantGesture.armed',ctx),false);
+vm.runInContext('placeParticleFlower=actualPlant',ctx);now=3202;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('flowers.length',ctx),0,'Holding after failure must not auto plant');
+ctx.mouseIsPressed=false;vm.runInContext('handleParticleInteraction(millis())',ctx);ctx.mouseIsPressed=true;now+=500;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('flowers.length',ctx),1,'Release must allow retry');
+console.log('PASS: 260-step continued growth, late flower creation, bounded active plants, gradual fade and cleanup, failed press can retry after release.');

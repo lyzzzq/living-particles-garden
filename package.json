@@ -4,6 +4,6 @@
   "private": true,
   "description": "Interactive garden class final project using p5.js and ml5.js Hand Pose",
   "scripts": {
-    "test": "node tests/interaction.cjs && node tests/tracking-ready.cjs && node tests/sound.cjs && node tests/renewal.cjs"
+    "test": "node tests/interaction.cjs && node tests/tracking-ready.cjs && node tests/sound.cjs && node tests/renewal.cjs && node tests/pinch.cjs"
   }
 }
