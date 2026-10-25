@@ -254,7 +254,7 @@ function filteredPoint(raw,now){
 function handleParticleInteraction(now){
   let raw=null,open=false,fist=false;
   if(mode==='hand'&&hands.length){const k=hands[0].keypoints,g=readGesture(k);open=g.open;fist=g.fist;const p=fist?k[9]:k[8];raw={x:(1-p.x/(video.elt.videoWidth||320))*width,y:p.y/(video.elt.videoHeight||240)*height};}
-  else if(mode==='mouse'&&mouseX>=0&&mouseX<=width&&mouseY>=0&&mouseY<=height){raw={x:mouseX,y:mouseY};open=keyIsDown(32);fist=keyIsDown(70);}
+  else if(mode==='mouse'&&mouseX>=0&&mouseX<=width&&mouseY>=0&&mouseY<=height&&!document.elementFromPoint?.(mouseX,mouseY)?.closest('button,select,input,nav,.sound-controls')){raw={x:mouseX,y:mouseY};open=keyIsDown(32);fist=keyIsDown(70);}
   if(!raw){gardenSound.motion(null,now);cursorPoint=null;filteredHand=null;dwellState.anchor=null;branchAnchor=null;feedbackAnchor=null;return;}
   const point=filteredPoint(raw,now);cursorPoint=point;gardenSound.motion(point,now);
   emitGestureFeedback(point,now);
