@@ -9,7 +9,7 @@ now=12000;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equa
 ctx.mouseIsPressed=false;ctx.mouseX=730;ctx.mouseY=330;vm.runInContext('filteredHand=null;handleParticleInteraction(millis())',ctx);now+=500;ctx.mouseIsPressed=true;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('userPlantings',ctx),2);
 ctx.mouseIsPressed=false;
 const count=vm.runInContext('flowers.length',ctx);keys.add(32);now+=100;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('flowers.length',ctx),count);assert(vm.runInContext('flowers.some(f=>f.goal===1)',ctx));
-const sizes=[];for(let i=0;i<20;i++){ctx.tx=330+i*17;ctx.ty=330+(i%4)*27;vm.runInContext('flowers=[];stems=[];vineLinks=[];userPlantings=4',ctx);const f=vm.runInContext('placeParticleFlower(tx,ty,"random")',ctx);if(f)sizes.push(f.size);}
+const sizes=[];for(let i=0;i<20;i++){ctx.tx=330+i*17;ctx.ty=330+(i%4)*27;vm.runInContext('flowers=[];stems=[];vineLinks=[];userPlantings=7',ctx);const f=vm.runInContext('placeParticleFlower(tx,ty,"random")',ctx);if(f)sizes.push(f.size);}
 assert(Math.min(...sizes)<38&&Math.max(...sizes)>80,'Missing large/small variation');
 assert(vm.runInContext('["apricot","blush","ivory","rose"].includes(makeParticleFlower(500,350,80,"coral",42).scheme)',ctx));
 assert(vm.runInContext('new Set(Array.from({length:30},(_,i)=>randomFlowerScheme("coral",i*997))).size>=3',ctx),'Same flower form should have multiple coordinated color schemes');
@@ -28,3 +28,4 @@ assert(vm.runInContext('makeParticleFlower(500,350,145,"veil",12).petals.length>
 ctx.document.elementFromPoint=()=>({closest:()=>true});vm.runInContext('handleParticleInteraction(millis())',ctx);assert(vm.runInContext('cursorPoint===null',ctx),'Hovering controls must not plant behind the UI');
 assert(vm.runInContext('stems.filter(s=>s.variant!=="vine").every(s=>s.segments[0].points.length===160 && s.segments[0].points[0].t===0 && s.segments[0].points.at(-1).t===1)',ctx),'Meadow and little flowers share a connecting stem from start to end');
 console.log('PASS: no planting over controls;  three growth forms, varied little blossoms, layered large flowers;  connected varied vines, movement feedback and expiry;  no hover planting, one flower per click, holding never repeats, release allows next click, open palm adds no flowers, random large/small sizes, apricot multi-tone rosette, cursor-free export.');
+

@@ -133,23 +133,21 @@ function readGesture(k){
   if(!k || k.length<21)return {open:false,fist:false,canRearm:false};
   const wrist=k[0],palm=max(12,dist(wrist.x,wrist.y,k[9].x,k[9].y));
   const extended=[8,12,16,20].filter(i=>dist(k[i].x,k[i].y,wrist.x,wrist.y)>dist(k[i-2].x,k[i-2].y,wrist.x,wrist.y)*1.055).length;
-  const curled=[8,12,16,20].filter(i=>dist(k[i].x,k[i].y,wrist.x,wrist.y)<dist(k[i-2].x,k[i-2].y,wrist.x,wrist.y)*.95).length;
-  const bent=[8,12,16,20].filter(i=>{const joint=k[i-2],base=k[i-3],tip=k[i],ax=base.x-joint.x,ay=base.y-joint.y,bx=tip.x-joint.x,by=tip.y-joint.y;return (ax*bx+ay*by)/Math.max(1,Math.hypot(ax,ay)*Math.hypot(bx,by))>-.35;}).length;
-  const tucked=[8,12,16,20].every(i=>dist(k[i].x,k[i].y,wrist.x,wrist.y)<palm*1.12);
-  const fist=curled===4&&extended===0&&bent===4&&tucked&&dist(k[4].x,k[4].y,k[9].x,k[9].y)<palm*.95;
+  const folded=[8,12,16,20].filter(i=>{
+    const joint=k[i-2],base=k[i-3],tip=k[i],ax=base.x-joint.x,ay=base.y-joint.y,bx=tip.x-joint.x,by=tip.y-joint.y;
+    const bend=(ax*bx+ay*by)/Math.max(1,Math.hypot(ax,ay)*Math.hypot(bx,by));
+    return bend>-.65&&dist(tip.x,tip.y,wrist.x,wrist.y)<dist(joint.x,joint.y,wrist.x,wrist.y)*1.08;
+  });
+  // 食指必须收拢；允许一根手指的关键点不准，不要求拇指挤在特定位置。
+  const fist=folded.includes(8)&&folded.length>=3&&extended<=1;
   const spread=dist(k[8].x,k[8].y,k[20].x,k[20].y)>palm*.4;
   return {fist,open:!fist&&extended>=3&&spread,canRearm:extended<=2};
 }
-let handIntent={sample:null,palm:null,time:0,speed:0,fistSince:null};
+let handIntent={fistSince:null};
 function confirmedFist(k,gesture,now){
-  if(handIntent.sample!==k){
-    const palm={x:k[9].x/(video.elt.videoWidth||320)*width,y:k[9].y/(video.elt.videoHeight||240)*height};
-    handIntent.speed=handIntent.palm?Math.hypot(palm.x-handIntent.palm.x,palm.y-handIntent.palm.y)/Math.max(16,now-handIntent.time)*1000:0;
-    handIntent.sample=k;handIntent.palm=palm;handIntent.time=now;
-  }
-  if(!gesture.fist||handIntent.speed>260){handIntent.fistSince=null;return false;}
+  if(!gesture.fist){handIntent.fistSince=null;return false;}
   handIntent.fistSince??=now;
-  return now-handIntent.fistSince>=120;
+  return now-handIntent.fistSince>=100;
 }
 function butterflyMotion(state,point,now){
   const dt=Math.min(.08,Math.max(.001,(now-(state.time??now-16))/1000));state.time=now;
@@ -330,7 +328,7 @@ function filteredPoint(raw,now){
   if(d>8){const alpha=1-Math.exp(-dt/(d>90?.045:.085)),gain=(d-4)/d;filteredHand.x+=dx*alpha*gain;filteredHand.y+=dy*alpha*gain;}
   return {x:filteredHand.x,y:filteredHand.y};
 }
-function resetPlantGesture(){handIntent={sample:null,palm:null,time:0,speed:0,fistSince:null};pendingMousePlant=null;plantGesture={armed:mode==='hand',releaseSince:null,lastAttempt:-Infinity,flashUntil:0,message:''};}
+function resetPlantGesture(){handIntent={fistSince:null};pendingMousePlant=null;plantGesture={armed:mode==='hand',releaseSince:null,lastAttempt:-Infinity,flashUntil:0,message:''};}
 function triggerPlantGesture(pressed,released,point,now){
   if(released){plantGesture.armed=true;return null;}
   if(!pressed||!plantGesture.armed||now-plantGesture.lastAttempt<350)return null;
@@ -354,7 +352,7 @@ function handleParticleInteraction(now){
     raw=pendingMousePlant?{...pendingMousePlant}:{x:mouseX,y:mouseY};if(pendingMousePlant)filteredHand=null;open=keyIsDown(32);fist=keyIsDown(70);pinching=Boolean(mouseDown||pendingMousePlant);released=!mouseDown&&!pendingMousePlant;
   }
   if(!raw){
-    handIntent={sample:null,palm:null,time:0,speed:0,fistSince:null};plantGesture.releaseSince=null;pendingMousePlant=null;
+    handIntent={fistSince:null};plantGesture.releaseSince=null;pendingMousePlant=null;
     if(mode==='mouse')plantGesture.armed=!mouseDown;
     gardenSound.motion(null,now);cursorPoint=null;filteredHand=null;branchAnchor=null;feedbackAnchor=null;return;
   }
@@ -375,16 +373,16 @@ function handleParticleInteraction(now){
   currentGesture=gesture;
 }
 
-function placeParticleFlower(x,y,large,retry=false){
+function placeParticleFlower(x,y,large,retry=0){
   if(x<25||x>width-25||y<70||y>height-75||x<width*.31&&y<height*.3)return null;
   maintainGarden();
   const r=seeded(Math.floor(x*71+y*191+flowers.length*997+userPlantings*521));
-  const roll=r(),isRandom=large==='random',openingMain=isRandom&&(userPlantings===1||userPlantings===2);
+  const roll=r(),isRandom=large==='random',openingMain=isRandom&&[1,3,5].includes(userPlantings);
   let size=isRandom?(roll<.32?20+r()*18:roll<.78?42+r()*30:Math.min(170,Math.min(width,height)*(.17+r()*.065))):large?Math.min(135,Math.min(width,height)*.18):15+r()*17;
-  // 前三次成功播种先形成中景和两朵主花，随后恢复大小随机。
-  if(isRandom&&userPlantings===0)size=70+r()*20;
-  if(openingMain)size=Math.min(220,Math.max(115,Math.min(width,height)*(.24+r()*.04)));
-  if(isRandom&&userPlantings===3)size=44+r()*24;
+  // 前七朵按中、大、小、大、中、大、小交错，随后恢复随机。
+  if(isRandom&&[0,4].includes(userPlantings))size=54+r()*16;
+  if(isRandom&&[2,6].includes(userPlantings))size=32+r()*18;
+  if(openingMain)size=Math.min(220,Math.max(115,Math.min(width,height)*(.23+r()*.04)));
   size=Math.min(size,(width-36)/1.85,(height-140)/1.95);
   const room=Math.min(x,width-x,y,height-y-65);
   if(!openingMain&&size>room*.9)size=Math.max(20,Math.min(60,room*.65));
@@ -393,6 +391,7 @@ function placeParticleFlower(x,y,large,retry=false){
   for(let i=0;i<attempts;i++){
     const a=i*2.4,d=i===0?0:spread*Math.sqrt(i/(attempts-1));
     let cx=x+Math.cos(a)*d,cy=y+Math.sin(a)*d;
+    if(openingMain&&i>=40){cx=size*.9+8+Math.max(0,width-size*1.8-16)*((i*.61803398875)%1);cy=size*1.1+8+Math.max(0,height-size*1.8-81)*((i*.41421356237)%1);}
     if(openingMain){cx=Math.max(size*.9+8,Math.min(width-size*.9-8,cx));cy=Math.max(size*1.1+8,Math.min(height-size*.7-73,cy));}
     if(cx<size*.9||cx>width-size*.9||cy<size*1.1||cy>height-size*.7-65||cx<width*.32&&cy<height*.3)continue;
     if(flowers.some(f=>isGrowing(f)&&Math.hypot(cx-f.x,cy-f.y)<(size+f.size)*.88+15))continue;
@@ -401,9 +400,9 @@ function placeParticleFlower(x,y,large,retry=false){
     const f=makeParticleFlower(cx,cy,size,chosenType,flowerSeed,scheme);plantingColors.push(scheme);plantingForms.push(chosenType);f.userCreated=true;f.openingMain=openingMain;f.goal=openingMain?.8:isLarge?.65:1;flowers.push(f);userPlantings++;maintainGarden();
     addBranchGroup(cx+size*.2,cy+size*.3,-1.5+(r()-.5),Math.floor(r()*1e8),false,Math.min(1,size/110));rebuildVineLinks();updateParticleCount();return f;
   }
-  if(!retry){
+  if(retry<3){
     const nearby=flowers.filter(f=>isGrowing(f)&&(!f.openingMain||userPlantings>=4)&&gardenSteps-(f.createdStep??0)>=(openingMain?0:5)&&(openingMain||sceneTime-(f.born??0)>=(f.size>75?60:f.userCreated?25:12))&&Math.hypot(f.x-x,f.y-y)<(size+f.size)*1.2+(openingMain?spread:100)).sort((a,b)=>(a.createdStep??0)-(b.createdStep??0));
-    if(nearby.length){nearby.slice(0,2).forEach(retirePlant);return placeParticleFlower(x,y,large,true);}
+    if(nearby.length){nearby.slice(0,2).forEach(retirePlant);return placeParticleFlower(x,y,large,retry+1);}
   }
   return null;
 }
