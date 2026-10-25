@@ -15,5 +15,6 @@ for(let i=0;i<100;i++)sound.plant({seed:i,size:145});assert(sound.voices.size<=1
 sound.setVolume(0);assert.equal(sound.master.gain.value,0);sound.setVolume(50);assert.equal(sound.master.gain.value,.19);sound.setVolume('invalid');assert.equal(sound.volume,.5);
 await sound.toggle();assert(!sound.enabled);assert.equal(sound.ctx.state,'suspended');sound.plant({seed:2,size:145});assert.equal(sound.voices.size,0);
 await sound.toggle();assert.equal(contexts,1,'Re-enable reuses context');await sound.hide();assert(!sound.enabled);assert.equal(sound.ctx.state,'suspended');
-console.log('PASS: click-to-start, continuous movement sound, silence on lost input, flower chimes, gesture cooldown, bounded and cleaned voices, volume, mute/re-enable, background pause.');
+await sound.toggle();sound.ctx.currentTime=sound.nextBackground+.1;sound.motion(null,4000);assert.equal(sound.voices.size,2,'Quiet background melody must play without moving');sound.motion(null,4100);assert.equal(sound.voices.size,2,'No background note flood per frame');await sound.hide();
+console.log('PASS: quiet background melody and interval;  click-to-start, continuous movement sound, silence on lost input, flower chimes, gesture cooldown, bounded and cleaned voices, volume, mute/re-enable, background pause.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
