@@ -92,6 +92,7 @@ async function loadHandTracker(source){
 // 顺序处理视频帧，捕获异步识别错误，避免失败后界面一直假装在运行。
 async function detectionLoop(session) {
   if(session!==trackingSession || !cameraReady)return;
+  if(document.hidden){setTimeout(()=>detectionLoop(session),250);return;}
   const timestamp=video?.elt?.currentTime;
   if(Number.isFinite(timestamp)&&timestamp===lastTrackedVideoTime){setTimeout(()=>detectionLoop(session),10);return;}
   if(Number.isFinite(timestamp))lastTrackedVideoTime=timestamp;
@@ -226,7 +227,7 @@ function draw(){
   const now=millis(),dt=Math.min(.05,Math.max(.001,(now-(lastFrame||now-16))/1000));lastFrame=now;sceneTime+=dt;
   pruneGarden();
   handleParticleInteraction(now);
-  for(const f of flowers){const target=sceneTime<f.autoAt?0:f.goal;f.bloom+=Math.sign(target-f.bloom)*Math.min(Math.abs(target-f.bloom),dt*(target===0?1.7:f.size>75?.4:.75));}
+  for(const f of flowers){const target=sceneTime<f.autoAt?0:f.goal,responding=sceneTime-(f.responsePulse??-Infinity)<1.5;f.bloom+=Math.sign(target-f.bloom)*Math.min(Math.abs(target-f.bloom),dt*(responding?2.4:target===0?1.7:f.size>75?.65:.9));}
   drawParticleArtwork();drawGestureFeedback(now);drawParticleButterfly(now);
 }
 function drawParticleArtwork(){
@@ -269,14 +270,29 @@ function addBranchGroup(x,y,heading,seed,initial=false,plantScale=1){
   }
   const tip=curve(1);stems.push({x,y,segments,leaves,flowersOnVine,variant,phase:r()*7,born:initial?-10:sceneTime,createdStep:gardenSteps,end:{x:x+tip.x,y:y+tip.y}});maintainGarden();
 }
+// 成熟藤蔓的粒子烘焙一次；枝条整体仍摇曳，叶片和碎花继续独立动画。
+function cacheStemGrains(stem){
+  let left=0,top=0,right=0,bottom=0;
+  for(const segment of stem.segments)for(const p of segment.points){left=Math.min(left,p.x-4);top=Math.min(top,p.y-4);right=Math.max(right,p.x+5);bottom=Math.max(bottom,p.y+5);}
+  left=Math.floor(left);top=Math.floor(top);
+  const canvas=document.createElement('canvas');canvas.width=Math.ceil(right-left);canvas.height=Math.ceil(bottom-top);
+  const c=canvas.getContext('2d');c.translate(-left,-top);
+  for(const segment of stem.segments)for(const p of segment.points){c.globalAlpha=segment.alpha*(.7+p.t*.2);c.fillStyle=p.tone;const size=p.radius*segment.weight;c.fillRect(p.x,p.y,size,size);}
+  return {canvas,x:left,y:top};
+}
 function drawParticleStem(c,stem){
   const opacity=plantOpacity(stem);if(opacity<=0)return;
   const progress=Math.min(1,(sceneTime-stem.born)/1.2);
   c.save();c.translate(stem.x,stem.y);c.rotate(Math.sin(sceneTime*.15+stem.phase)*.016);
+  if(progress>=1){
+    if(!stem.grainLayer)stem.grainLayer=cacheStemGrains(stem);
+    c.globalAlpha=opacity;c.drawImage(stem.grainLayer.canvas,stem.grainLayer.x,stem.grainLayer.y);
+  }else{
   for(const s of stem.segments)for(const p of s.points){
     if(p.t>progress)continue;
     c.globalAlpha=(s.alpha*(.7+p.t*.2))*opacity;c.fillStyle=p.tone;
     const x=p.x+Math.sin(sceneTime*.27+stem.phase+p.t*2)*p.t*1.1,size=p.radius*s.weight;c.fillRect(x,p.y,size,size);
+  }
   }
   for(const leaf of stem.leaves){
     c.save();c.translate(leaf.x,leaf.y);c.rotate(leaf.angle+Math.sin(sceneTime*.34+leaf.phase)*.04);c.scale(progress,progress);c.globalAlpha=(.65)*opacity;
@@ -290,7 +306,7 @@ function filteredPoint(raw,now){
   if(!filteredHand){filteredHand={...raw,time:now};return {...raw};}
   const dt=Math.min(.08,Math.max(.001,(now-filteredHand.time)/1000));filteredHand.time=now;
   const dx=raw.x-filteredHand.x,dy=raw.y-filteredHand.y,d=Math.hypot(dx,dy);
-  if(d>12){const alpha=1-Math.exp(-dt/(d>120?.08:.16)),gain=(d-7)/d;filteredHand.x+=dx*alpha*gain;filteredHand.y+=dy*alpha*gain;}
+  if(d>8){const alpha=1-Math.exp(-dt/(d>90?.045:.085)),gain=(d-4)/d;filteredHand.x+=dx*alpha*gain;filteredHand.y+=dy*alpha*gain;}
   return {x:filteredHand.x,y:filteredHand.y};
 }
 function resetPlantGesture(){pendingMousePlant=null;plantGesture={armed:mode==='hand',releaseSince:null,lastAttempt:-Infinity,flashUntil:0,message:''};}
@@ -333,7 +349,7 @@ function handleParticleInteraction(now){
     branchAnchor={...point};
     const active=flowers.filter(isGrowing),nearby=active.filter(f=>Math.hypot(f.x-point.x,f.y-point.y)<340);
     const targets=nearby.length?nearby:active.sort((a,b)=>Math.hypot(a.x-point.x,a.y-point.y)-Math.hypot(b.x-point.x,b.y-point.y)).slice(0,1);
-    for(const f of targets){const previous=f.goal;f.goal=fist?0:1;f.closed=fist;if(open){f.autoAt=0;if(changed||previous<1)f.responsePulse=sceneTime;}}
+    for(const f of targets){const previous=f.goal;f.goal=fist?0:1;f.closed=fist;f.autoAt=0;if(changed||previous!==f.goal)f.responsePulse=sceneTime;}
   }
   currentGesture=gesture;
 }
@@ -511,7 +527,8 @@ function petalTexture(length,width,bend,seed,pink,rounded=false){
   const silhouette=t=>rounded?(1-Math.exp(-t*10))*Math.pow(1-t,.32)*(.9+.1*Math.sin(t*5+seed)):Math.pow(Math.sin(Math.PI*t),.7)*(.72+.26*Math.sin(t*7+seed)+.13*Math.cos(t*15+seed*.1));
   const position=(t,u)=>({x:u*width*silhouette(t)+bend*Math.sin(t*2.8)*t+Math.sin(t*5+seed)*length*.1*t,y:-length*t+u*u*length*.12+Math.sin(t*4+seed)*length*.13*t+u*length*.11*t});
   const patches=[{t:.38+(seed%5)*.06,u:-.4,wt:.23,wu:.34,color:accents[0]},{t:.7,u:.35,wt:.16,wu:.29,color:accents[1]}];
-  for(let i=0;i<8800;i++){
+  const grainBudget=Math.min(8800,Math.max(900,Math.ceil(length*width*.85)));
+  for(let i=0;i<grainBudget;i++){
     const t=r(),u=r()*2-1,edge=Math.abs(u);
     // 颜料沿曲面凝聚成不等宽的带，保留透气的疏区和靠近根部的空隙。
     const fold=.5+.5*Math.sin(u*8+t*6+seed*.13),density=(.42+.58*fold)*(.3+.7*Math.min(1,t*4));
