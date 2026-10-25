@@ -329,24 +329,31 @@ function placeParticleFlower(x,y,large,retry=false){
   if(x<25||x>width-25||y<70||y>height-75||x<width*.31&&y<height*.3)return null;
   maintainGarden();
   const r=seeded(Math.floor(x*71+y*191+flowers.length*997+userPlantings*521));
-  const roll=r(),isRandom=large==='random';
+  const roll=r(),isRandom=large==='random',openingMain=isRandom&&(userPlantings===1||userPlantings===2);
   let size=isRandom?(roll<.32?20+r()*18:roll<.78?42+r()*30:Math.min(170,Math.min(width,height)*(.17+r()*.065))):large?Math.min(135,Math.min(width,height)*.18):15+r()*17;
+  // 前三次成功播种先形成中景和两朵主花，随后恢复大小随机。
+  if(isRandom&&userPlantings===0)size=70+r()*20;
+  if(openingMain)size=Math.min(220,Math.max(115,Math.min(width,height)*(.24+r()*.04)));
+  if(isRandom&&userPlantings===3)size=44+r()*24;
+  size=Math.min(size,(width-36)/1.85,(height-140)/1.95);
   const room=Math.min(x,width-x,y,height-y-65);
-  if(isRandom&&userPlantings>=2&&!flowers.some(f=>isGrowing(f)&&f.userCreated&&f.size>75)&&room>100)size=110+r()*Math.min(45,Math.max(0,room-110));
-  if(size>room*.9)size=Math.max(20,Math.min(60,room*.65));
+  if(!openingMain&&size>room*.9)size=Math.max(20,Math.min(60,room*.65));
   const isLarge=size>75;
-  for(let i=0;i<24;i++){
-    const a=i*2.4,d=i===0?0:(isLarge?110:55)*Math.sqrt(i/23),cx=x+Math.cos(a)*d,cy=y+Math.sin(a)*d;
+  const attempts=openingMain?64:24,spread=openingMain?Math.min(380,Math.max(width,height)*.36):(isLarge?110:55);
+  for(let i=0;i<attempts;i++){
+    const a=i*2.4,d=i===0?0:spread*Math.sqrt(i/(attempts-1));
+    let cx=x+Math.cos(a)*d,cy=y+Math.sin(a)*d;
+    if(openingMain){cx=Math.max(size*.9+8,Math.min(width-size*.9-8,cx));cy=Math.max(size*1.1+8,Math.min(height-size*.7-73,cy));}
     if(cx<size*.9||cx>width-size*.9||cy<size*1.1||cy>height-size*.7-65||cx<width*.32&&cy<height*.3)continue;
     if(flowers.some(f=>isGrowing(f)&&Math.hypot(cx-f.x,cy-f.y)<(size+f.size)*.88+15))continue;
     const pool=isLarge?['veil','coral','orchid']:size>40?['veil','coral','orchid','drift','plume']:['seed','drift','plume'];
     const used=flowers.filter(f=>isGrowing(f)&&f.size>75).map(f=>f.type),fresh=pool.filter(t=>!used.includes(t));
     const types=isLarge&&fresh.length?fresh:pool;
-    const f=makeParticleFlower(cx,cy,size,types[Math.floor(r()*types.length)],Math.floor(r()*1e8));f.userCreated=true;f.goal=isLarge?.58:1;flowers.push(f);userPlantings++;maintainGarden();
+    const f=makeParticleFlower(cx,cy,size,types[Math.floor(r()*types.length)],Math.floor(r()*1e8));f.userCreated=true;f.openingMain=openingMain;f.goal=openingMain?.8:isLarge?.65:1;flowers.push(f);userPlantings++;maintainGarden();
     addBranchGroup(cx+size*.2,cy+size*.3,-1.5+(r()-.5),Math.floor(r()*1e8),false,Math.min(1,size/110));rebuildVineLinks();updateParticleCount();return f;
   }
   if(!retry){
-    const nearby=flowers.filter(f=>isGrowing(f)&&gardenSteps-(f.createdStep??0)>=5&&Math.hypot(f.x-x,f.y-y)<(size+f.size)*1.2+100).sort((a,b)=>(a.createdStep??0)-(b.createdStep??0));
+    const nearby=flowers.filter(f=>isGrowing(f)&&(!f.openingMain||userPlantings>=4)&&gardenSteps-(f.createdStep??0)>=(openingMain?0:5)&&Math.hypot(f.x-x,f.y-y)<(size+f.size)*1.2+(openingMain?spread:100)).sort((a,b)=>(a.createdStep??0)-(b.createdStep??0));
     if(nearby.length){nearby.slice(0,2).forEach(retirePlant);return placeParticleFlower(x,y,large,true);}
   }
   return null;
