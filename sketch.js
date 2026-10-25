@@ -676,14 +676,14 @@ class GardenSound {
   }
   updateUI(message){
     const button=document.getElementById('sound');if(button){button.textContent=this.enabled?'声音：开':'开启声音';button.setAttribute('aria-pressed',String(this.enabled));}
-    const state=document.getElementById('sound-state');if(state)state.textContent=message||(this.enabled?'轻风与慢速旋律 · 随手势呼吸':'声音已关闭');
+    const state=document.getElementById('sound-state');if(state)state.textContent=message||(this.enabled?'轻风与铃音 · 节奏随手速变化':'声音已关闭');
   }
   async toggle(){
     if(this.busy)return;this.busy=true;
     try{
       if(!this.ctx)this.init();
       if(this.enabled){this.enabled=false;this.master.gain.setTargetAtTime(0,this.ctx.currentTime,.045);await this.ctx.suspend();}
-      else {await this.ctx.resume();if(this.ctx.state!=='running')throw Error('声音未启动，请再次点击开启声音。');this.enabled=true;this.master.gain.setTargetAtTime(this.volume*.38,this.ctx.currentTime,.35);this.previous=null;this.nextBackground=this.ctx.currentTime+4;}
+      else {await this.ctx.resume();if(this.ctx.state!=='running')throw Error('声音未启动，请再次点击开启声音。');this.enabled=true;this.master.gain.setTargetAtTime(this.volume*.38,this.ctx.currentTime,.35);this.previous=null;this.motionSpeed=0;this.motionTravel=0;this.lastMotionNote=null;this.nextBackground=this.ctx.currentTime+4;}
       this.updateUI();
     }catch(error){this.enabled=false;this.updateUI(error.message||'声音启动失败，请重试。');}
     finally{this.busy=false;}
@@ -694,20 +694,24 @@ class GardenSound {
     const output=document.getElementById('volume-value');if(output)output.textContent=Math.round(this.volume*100)+'%';
   }
   motion(point,now){
-    if(!this.enabled||this.ctx?.state!=='running'){this.previous=null;this.motionTravel=0;return;}
+    if(!this.enabled||this.ctx?.state!=='running'){this.previous=null;this.motionTravel=0;this.motionSpeed=0;return;}
     this.background();
-    let speed=0,distance=0;
-    if(point&&this.previous){const dt=Math.max(16,now-this.previous.now);distance=Math.hypot(point.x-this.previous.x,point.y-this.previous.y);speed=Math.min(1,distance/dt*1.6);}
+    let speed=0,distance=0,dt=16;
+    if(point&&this.previous){dt=Math.max(16,now-this.previous.now);distance=Math.hypot(point.x-this.previous.x,point.y-this.previous.y);speed=Math.min(1,distance/dt*1.6);}
+    const starting=point&&!this.previous;
     this.previous=point?{...point,now}:null;
-    // 背景风保持很轻；移动改为稀疏的五声音阶，不随每帧触发。
     this.airGain.gain.setTargetAtTime(.008,this.ctx.currentTime,.2);
     this.airFilter.frequency.setTargetAtTime(420,this.ctx.currentTime,.25);
-    if(!point){this.motionTravel=0;return;}
+    if(!point){this.motionTravel=0;this.motionSpeed=0;this.lastMotionNote=null;return;}
+    if(starting){this.motionSpeed=0;this.motionTravel=0;this.lastMotionNote=now;}
+    // 对手速做缓动，慢速约两秒一音，快速也保持舒展；抖动和静止不发音。
+    this.motionSpeed=(this.motionSpeed||0)+(speed-(this.motionSpeed||0))*(1-Math.exp(-dt/350));
     this.motionTravel=(this.motionTravel||0)+(distance>1.5?Math.min(distance,45):0);
-    if(this.motionTravel>=28&&now-(this.lastMotionNote??-Infinity)>=650){
+    const interval=2100-1200*Math.pow(this.motionSpeed,.75);
+    if(distance>1.5&&this.motionTravel>=28&&now-this.lastMotionNote>=interval){
       const scale=[523.251,587.33,659.255,783.991,880,1046.502],h=typeof height==='number'?height:700;
       const index=Math.max(0,Math.min(5,Math.floor((1-point.y/h)*6)));
-      this.bell(scale[index],0,.025+speed*.018,2.4);
+      this.bell(scale[index],0,.025+this.motionSpeed*.018,2.8);
       this.lastMotionNote=now;this.motionTravel=0;
     }
   }
@@ -732,11 +736,12 @@ class GardenSound {
     if(flower.size>75){this.bell(base*1.5,.19,.07,3.8);this.bell(base*2,.38,.04,3.2);}
   }
   gesture(kind,now){
-    if(!this.enabled||!['open','fist'].includes(kind)||now-this.lastGesture<850)return;this.lastGesture=now;
+    if(!this.enabled||!['open','fist'].includes(kind)||now-this.lastGesture<450)return;this.lastGesture=now;
     const opening=kind==='open';this.padFilter.frequency.setTargetAtTime(opening?1600:260,this.ctx.currentTime,.65);
-    const notes=opening?[329.628,391.995,523.251]:[391.995,293.665,195.998];
-    notes.forEach((note,i)=>this.bell(note,i*.22,opening?.075:.05,opening?3.5:2.5));
-    this.updateUI(opening?'张掌 · 铃音缓缓展开':'握拳 · 音色渐暗、回落');
+    const notes=opening?[329.628,391.995,523.251,659.255]:[523.251,391.995,293.665,195.998];
+    notes.forEach((note,i)=>this.bell(note,i*(opening?.19:.23),(opening?.16:.14)*(1-i*.12),opening?3.2:2.8));
+    this.bell(opening?1318.51:97.999,opening?.5:.1,opening?.045:.055,opening?2.6:2.1);
+    this.updateUI(opening?'张掌 · 上行铃音绽放':'握拳 · 下行铃音收拢');
   }
   async hide(){
     this.previous=null;if(this.ctx?.state==='running'){this.enabled=false;this.master.gain.value=0;await this.ctx.suspend();this.updateUI('页面已暂停声音，点击可重新开启');}
