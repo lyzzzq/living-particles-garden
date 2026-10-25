@@ -8,7 +8,7 @@ const sound=vm.runInContext('gardenSound',sandbox);
 (async()=>{
 assert.equal(contexts,0,'No sound before a user click');sound.plant({seed:1,size:130});assert.equal(contexts,0);
 await sound.toggle();assert.equal(contexts,1);assert.equal(sound.ctx.state,'running');assert(sound.enabled);assert.equal(elements.sound['aria-pressed'],'true');
-sound.motion({x:100,y:100},1000);sound.motion({x:200,y:100},1100);assert(sound.airGain.gain.value>.008);sound.motion(null,1200);assert.equal(sound.airGain.gain.value,.008);
+sound.motion({x:100,y:100},1000);sound.motion({x:200,y:100},1100);assert.equal(sound.airGain.gain.value,.008);assert.equal(sound.voices.size,1,'Movement makes a quiet note');sound.motion({x:260,y:100},1150);assert.equal(sound.voices.size,1,'Movement note cooldown');sound.motion(null,1200);assert.equal(sound.airGain.gain.value,.008);for(const voice of [...sound.voices])voice.onended();
 sound.plant({seed:12,size:145});assert.equal(sound.voices.size,4,'A large flower gets a short layered chime');
 sound.gesture('open',2000);assert.equal(sound.padFilter.frequency.value,1600);const count=sound.voices.size;sound.gesture('fist',2100);assert.equal(sound.voices.size,count,'Gesture jitter cannot flood notes');sound.gesture('fist',3000);assert.equal(sound.padFilter.frequency.value,260);
 for(let i=0;i<100;i++)sound.plant({seed:i,size:145});assert(sound.voices.size<=18,'Polyphony is bounded');for(const voice of [...sound.voices])voice.onended();assert.equal(sound.voices.size,0,'Finished voices are disconnected');
@@ -16,5 +16,5 @@ sound.setVolume(0);assert.equal(sound.master.gain.value,0);sound.setVolume(50);a
 await sound.toggle();assert(!sound.enabled);assert.equal(sound.ctx.state,'suspended');sound.plant({seed:2,size:145});assert.equal(sound.voices.size,0);
 await sound.toggle();assert.equal(contexts,1,'Re-enable reuses context');await sound.hide();assert(!sound.enabled);assert.equal(sound.ctx.state,'suspended');
 await sound.toggle();sound.ctx.currentTime=sound.nextBackground+.1;sound.motion(null,4000);assert.equal(sound.voices.size,2,'Quiet background melody must play without moving');sound.motion(null,4100);assert.equal(sound.voices.size,2,'No background note flood per frame');await sound.hide();
-console.log('PASS: quiet background melody and interval;  click-to-start, continuous movement sound, silence on lost input, flower chimes, gesture cooldown, bounded and cleaned voices, volume, mute/re-enable, background pause.');
+console.log('PASS: quiet background melody and interval;  click-to-start, sparse movement notes and cooldown, silence on lost input, flower chimes, gesture cooldown, bounded and cleaned voices, volume, mute/re-enable, background pause.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
