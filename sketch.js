@@ -495,10 +495,15 @@ function splashedCore(seed,scheme){
   }
   return canvas;
 }
+function randomFlowerScheme(type,seed){
+  const choices={veil:['blush','violet','ivory','apricot'],coral:['apricot','blush','ivory','rose'],orchid:['violet','rose','ivory'],plume:['vermilion','rose','amber'],drift:['rose','violet','blush'],seed:['amber','apricot','ivory','vermilion']}[type]||['blush','ivory','violet'];
+  const colorRandom=seeded(seed+19871);colorRandom();colorRandom();
+  return choices[Math.floor(colorRandom()*choices.length)];
+}
 function makeParticleFlower(x,y,size,type,seed){
   const r=seeded(seed),f={x,y,size,type,seed,phase:r()*7,bloom:0,goal:1,autoAt:sceneTime+.3,points:[],petals:[],dust:[],closed:false,born:sceneTime,createdStep:gardenSteps};
-  const choice=document.getElementById('palette')?.value||'mixed';
-  f.scheme=choice==='mixed'?({veil:'blush',coral:'apricot',orchid:'violet',plume:'vermilion',drift:'rose',seed:'amber'})[type]:({pink:'rose',gold:'amber',purple:'violet'})[choice]||'blush';
+  // 每朵花独立选择协调的主色组；花瓣内部继续保留局部辅色。
+  f.scheme=randomFlowerScheme(type,seed);
   f.filaments=[];
   const airy=type==='drift'||type==='plume'||type==='seed';
   const detailed=size>75;const count=type==='orchid'?(detailed?15:9):type==='seed'?1:airy?2:type==='coral'?(detailed?29:23):(detailed?15:5);

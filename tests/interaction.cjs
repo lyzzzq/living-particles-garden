@@ -10,7 +10,8 @@ ctx.mouseX=730;ctx.mouseY=330;vm.runInContext('filteredHand=null;handleParticleI
 const count=vm.runInContext('flowers.length',ctx);keys.add(32);now+=100;vm.runInContext('handleParticleInteraction(millis())',ctx);assert.equal(vm.runInContext('flowers.length',ctx),count);assert(vm.runInContext('flowers.some(f=>f.goal===1)',ctx));
 const sizes=[];for(let i=0;i<20;i++){ctx.tx=330+i*17;ctx.ty=330+(i%4)*27;vm.runInContext('flowers=[];stems=[];vineLinks=[];userPlantings=0',ctx);const f=vm.runInContext('placeParticleFlower(tx,ty,"random")',ctx);if(f)sizes.push(f.size);}
 assert(Math.min(...sizes)<38&&Math.max(...sizes)>80,'Missing large/small variation');
-assert(vm.runInContext('makeParticleFlower(500,350,80,"coral",42).scheme',ctx)==='apricot');
+assert(vm.runInContext('["apricot","blush","ivory","rose"].includes(makeParticleFlower(500,350,80,"coral",42).scheme)',ctx));
+assert(vm.runInContext('new Set(Array.from({length:30},(_,i)=>randomFlowerScheme("coral",i*997))).size>=3',ctx),'Same flower form should have multiple coordinated color schemes');
 let cursorSaved=false;ctx.drawParticleButterfly=()=>{cursorSaved=true;};vm.runInContext('saveParticleArtwork()',ctx);assert.equal(cursorSaved,false);
 vm.runInContext('flowers=[];stems=[];liveVineTip=null;liveVineLength=0;sceneTime=20',ctx);
 vm.runInContext('placeBranchNear({x:480,y:350},0,10000);placeBranchNear({x:525,y:360},0,10300);placeBranchNear({x:570,y:365},0,10600)',ctx);
