@@ -8,14 +8,14 @@ const sound=vm.runInContext('gardenSound',sandbox);
 (async()=>{
 assert.equal(contexts,0,'No sound before a user click');sound.plant({seed:1,size:130});assert.equal(contexts,0);
 await sound.toggle();assert.equal(contexts,1);assert.equal(sound.ctx.state,'running');assert(sound.enabled);assert.equal(elements.sound['aria-pressed'],'true');
-sound.motion({x:100,y:100},1000);sound.motion({x:200,y:100},1100);assert.equal(sound.airGain.gain.value,.008);assert.equal(sound.voices.size,0,'Movement does not immediately rush into a note');
+sound.motion({x:100,y:100},1000);sound.motion({x:200,y:100},1100);assert(sound.airGain.gain.value>.008,'Movement wind is audible above the background');assert.equal(sound.voices.size,0,'Movement does not immediately rush into a note');
 for(let i=1;i<=50;i++)sound.motion({x:200+i*20,y:100},1100+i*50);
 assert(sound.voices.size>0&&sound.voices.size<=2,'Moving notes remain slow and sparse');
 const movingCount=sound.voices.size;for(let i=1;i<=60;i++)sound.motion({x:1200,y:100},3600+i*50);assert.equal(sound.voices.size,movingCount,'Stationary hand cannot release accumulated notes');
 sound.motion(null,7000);for(const voice of [...sound.voices])voice.onended();
 const originalBell=sound.bell;let movementEvents=[];sound.bell=(...args)=>movementEvents.push(args);
-function measureTempo(step){movementEvents=[];sound.previous=null;sound.motionTravel=0;sound.lastMotionNote=null;sound.motionSpeed=0;for(let i=0;i<=200;i++)sound.motion({x:100+i*step,y:100},10000+i*50);return movementEvents.length;}
-const slow=measureTempo(2),fast=measureTempo(25);assert(slow>=3&&fast>slow&&fast<=11,'Faster hand movement must play more notes than slow movement, without becoming frantic');sound.bell=originalBell;sound.motion(null,22000);
+function measureTempo(step){movementEvents=[];sound.previous=null;sound.motionTravel=0;sound.lastMotionNote=null;sound.motionSpeed=0;for(let i=0;i<=200;i++)sound.motion({x:100+i*step,y:100},10000+i*50);return {notes:movementEvents.length,wind:sound.airGain.gain.value,filter:sound.airFilter.frequency.value};}
+const slow=measureTempo(2),fast=measureTempo(25);assert(fast.wind>slow.wind&&fast.filter>slow.filter,'Wind grows louder and brighter with faster movement');assert(slow.notes>=3&&fast.notes>slow.notes&&fast.notes<=11,'Faster hand movement must play more notes than slow movement, without becoming frantic');sound.bell=originalBell;sound.motion(null,22000);
 sound.plant({seed:12,size:145});assert.equal(sound.voices.size,4,'A large flower gets a short layered chime');
 const gestureNotes=[];sound.bell=function(...args){gestureNotes.push(args);return originalBell.apply(this,args);};sound.gesture('open',2000);assert(gestureNotes[0][2]>=.15&&gestureNotes[3][0]>gestureNotes[0][0],'Bloom sound is prominent and rises');assert.equal(sound.padFilter.frequency.value,1600);const count=sound.voices.size;sound.gesture('fist',2100);assert.equal(sound.voices.size,count,'Gesture jitter cannot flood notes');sound.gesture('fist',3000);assert.equal(sound.padFilter.frequency.value,260);assert(gestureNotes[5][2]>=.13&&gestureNotes[8][0]<gestureNotes[5][0],'Closure is prominent and descends');sound.bell=originalBell;
 for(let i=0;i<100;i++)sound.plant({seed:i,size:145});assert(sound.voices.size<=18,'Polyphony is bounded');for(const voice of [...sound.voices])voice.onended();assert.equal(sound.voices.size,0,'Finished voices are disconnected');
