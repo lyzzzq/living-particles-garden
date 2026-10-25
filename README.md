@@ -1,4 +1,4 @@
-# 浮游花园 · Living Particles
+# 生长
 
 全屏手势花园课程期末项目，使用 HTML、CSS、JavaScript、p5.js 与 ml5.js Hand Pose。
 
