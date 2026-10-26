@@ -20,3 +20,32 @@ button:focus-visible,select:focus-visible{outline:1px solid #bccaaa;outline-offs
 #tracking-speed{color:#b5bba7;background:#0a0e0c9c;border-radius:6px}
 video{border-color:#b9cba433!important;border-radius:12px!important}
 @media(max-width:650px){nav{gap:3px;padding:7px;bottom:55px}button{font-size:10px;padding:9px}.sound-controls{bottom:170px}.status{font-size:9px}}
+
+/* 手机竖屏、横屏与安全区域。 */
+:root{--safe-top:env(safe-area-inset-top,0px);--safe-bottom:env(safe-area-inset-bottom,0px);--safe-left:env(safe-area-inset-left,0px);--safe-right:env(safe-area-inset-right,0px)}
+html,body{width:100%;height:100%;overscroll-behavior:none}body{height:var(--app-height,100dvh);-webkit-tap-highlight-color:transparent}main,.garden-card,#canvas-container{height:var(--app-height,100dvh)}
+button,input{touch-action:manipulation}.touch-action{display:none}button{white-space:nowrap}video#camera-preview,#tracking-overlay{position:fixed;right:20px;top:90px;width:160px;height:120px;transform:scaleX(-1);pointer-events:none;border-radius:12px}video#camera-preview{display:block;object-fit:contain;background:#000;z-index:4;border:1px solid #b9cba433;opacity:.7}#tracking-overlay{z-index:5}
+@media(max-width:700px),(max-height:500px){
+ body{--dock-size:106px}body.hand-mode{--dock-size:58px}
+ header{left:calc(16px + var(--safe-left));top:calc(12px + var(--safe-top));max-width:calc(100vw - 150px)}
+ .art-title{width:145px;max-width:100%;margin:0 0 4px}header p{max-width:175px;font-size:10px;line-height:1.5;letter-spacing:.6px;margin:5px 0 0}
+ .toolbar{right:calc(14px + var(--safe-right));top:calc(12px + var(--safe-top));font-size:10px;letter-spacing:0;max-width:46vw;text-align:right}
+ nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;left:calc(12px + var(--safe-left));right:calc(12px + var(--safe-right));bottom:calc(12px + var(--safe-bottom));transform:none;width:auto;max-width:none;padding:6px;border-radius:17px}
+ nav button{min-width:0;min-height:44px;padding:8px 3px;font-size:12px;letter-spacing:.2px}
+ body:not(.hand-mode) nav .touch-action{display:block;grid-column:span 2;background:#b4c4a40d;color:#dbe2cc}
+ .sound-controls{left:calc(12px + var(--safe-left));right:calc(12px + var(--safe-right));bottom:calc(var(--dock-size) + 22px + var(--safe-bottom));max-width:none;padding:3px 10px;gap:8px;min-height:44px;border-radius:13px}
+ .sound-controls button{min-height:40px;padding:6px 4px;font-size:12px;letter-spacing:.2px}.sound-controls label{font-size:11px;letter-spacing:0}.sound-controls input{flex:1;min-width:40px;width:auto;height:32px;margin:0;accent-color:#bdcba9}.sound-controls output{font-size:11px;min-width:30px}
+ #sound-state{position:static;display:none}
+ .status{left:calc(16px + var(--safe-left));right:calc(16px + var(--safe-right));bottom:calc(var(--dock-size) + 76px + var(--safe-bottom));font-size:10px;line-height:1.5;letter-spacing:.2px;min-height:30px;max-height:45px;overflow:hidden;color:#acb09f}
+ video#camera-preview,#tracking-overlay{right:calc(14px + var(--safe-right));top:calc(34px + var(--safe-top));width:96px;height:72px;border-radius:9px}
+ #tracking-speed{right:calc(14px + var(--safe-right));top:calc(110px + var(--safe-top));max-width:135px;font-size:9px;padding:3px 4px;line-height:1.4;text-align:right}
+}
+@media(max-width:350px){nav{left:8px;right:8px}nav button{font-size:11px}.art-title{width:128px}.sound-controls{left:8px;right:8px;gap:6px}.sound-controls label{display:none}}
+@media(max-height:500px) and (min-width:600px){
+ body{--dock-size:58px}header{top:calc(8px + var(--safe-top));left:calc(14px + var(--safe-left))}.art-title{width:116px}header p{display:none}
+ nav{left:50%;right:auto;transform:translateX(-50%);width:min(670px,calc(100vw - 32px - var(--safe-left) - var(--safe-right)));grid-template-columns:repeat(6,minmax(0,1fr));bottom:calc(8px + var(--safe-bottom))}
+ body:not(.hand-mode) nav .touch-action{grid-column:auto}body.hand-mode nav{grid-template-columns:repeat(4,minmax(0,1fr));width:430px}
+ .sound-controls{left:auto;right:calc(14px + var(--safe-right));width:250px;bottom:calc(74px + var(--safe-bottom))}
+ .status{left:calc(16px + var(--safe-left));right:290px;bottom:calc(78px + var(--safe-bottom));min-height:30px;max-height:30px}
+ .toolbar{top:calc(8px + var(--safe-top))}video#camera-preview,#tracking-overlay{top:calc(28px + var(--safe-top));width:84px;height:63px}#tracking-speed{top:calc(94px + var(--safe-top))}
+}

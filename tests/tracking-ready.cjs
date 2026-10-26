@@ -4,7 +4,7 @@ const ready=new Promise(resolve=>{releaseReady=()=>{modelReady=true;resolve();};
 const pen=new Proxy({}, {get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
 const videoElement={readyState:2,videoWidth:640,videoHeight:480,style:{},setAttribute(){},addEventListener(){},play:async()=>{}};
 const elements={status:{textContent:''}};
-const ctx={performance,window:{innerWidth:900,innerHeight:600,addEventListener(){}},navigator:{mediaDevices:{getUserMedia:async()=>({getTracks:()=>[{stop(){}}]})}},document:{getElementById:id=>elements[id]||null,createElement:()=>({style:{},getContext:()=>pen}),body:{appendChild(el){elements[el.id]=el;}}},createVideo:()=>({elt:videoElement,hide(){},size(){},remove(){}}),ml5:{handPose:()=>({ready,detect:async()=>{assert(modelReady,'Inference started before weights loaded');detectCalls++;if(failInference)throw Error('GPU unavailable');return [];}})},setTimeout:(fn,ms)=>ms===0?0:setTimeout(fn,ms),clearTimeout};
+const ctx={performance,width:900,height:600,window:{innerWidth:900,innerHeight:600,addEventListener(){}},navigator:{mediaDevices:{getUserMedia:async()=>({getTracks:()=>[{stop(){}}]})}},document:{getElementById:id=>elements[id]||null,createElement:()=>({style:{},getContext:()=>pen}),body:{appendChild(el){elements[el.id]=el;}}},createVideo:()=>({elt:videoElement,hide(){},size(){},remove(){}}),ml5:{handPose:()=>({ready,detect:async()=>{assert(modelReady,'Inference started before weights loaded');detectCalls++;if(failInference)throw Error('GPU unavailable');return [];}})},setTimeout:(fn,ms)=>ms===0?0:setTimeout(fn,ms),clearTimeout};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync(require('path').join(__dirname,'..','sketch.js'),'utf8'),ctx);
 (async()=>{
 const startup=vm.runInContext('startCamera()',ctx);

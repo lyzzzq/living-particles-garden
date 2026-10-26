@@ -2,7 +2,7 @@
 // 不在 preload 中加载模型，鼠标模式可以立即开始使用。
 let flowers = [], hands = [];
 let video, handPose, cameraStream;
-let mode = 'mouse', cameraReady = false, startingCamera = false;
+let mode = 'mouse', cameraReady = false, startingCamera = false,cameraCancelled=false;
 let cameraPreviewReady = false, lastDetectionState = '';
 let trackingSession = 0, detectionFrames = 0;
 let inferenceMs=0;
@@ -14,16 +14,59 @@ function withTimeout(promise, milliseconds, message) {
 }
 let cursorPoint = null;
 
+let touchInput={id:null,down:false,x:0,y:0,startX:0,startY:0,moved:false};
+let inputKind='mouse',lastManualPoint=null,manualAction=null,lastLayoutBounds=null,viewportResizeFrame=0;
+function viewportSize(){return {w:Math.round(window.innerWidth),h:Math.round(window.visualViewport&&window.visualViewport.scale===1?window.visualViewport.height:window.innerHeight)};}
+function compactLayout(){return width<=700||height<=500;}
+function gardenBounds(){
+  if(!compactLayout())return {left:0,top:0,right:width,bottom:height,w:width,h:height};
+  const landscape=width>height,style=window.getComputedStyle?.(document.documentElement),safeLeft=parseFloat(style?.getPropertyValue('--safe-left'))||0,safeRight=parseFloat(style?.getPropertyValue('--safe-right'))||0;
+  let top=landscape?12:126;
+  if(!landscape){const header=document.querySelector?.('header')?.getBoundingClientRect?.();if(header)top=Math.max(top,header.bottom+12);}
+  let bottom=height-(landscape?132:222),measuredBottom=Infinity;
+  for(const selector of ['nav','.sound-controls','.status']){const el=document.querySelector?.(selector),rect=el?.getBoundingClientRect?.();if(rect&&rect.width>0&&rect.height>0)measuredBottom=Math.min(measuredBottom,rect.top-16);}
+  if(Number.isFinite(measuredBottom))bottom=Math.min(height-60,measuredBottom);
+  bottom=Math.max(top+110,bottom);
+  return {left:12+safeLeft,top,right:width-12-safeRight,bottom,w:width-24-safeLeft-safeRight,h:bottom-top};
+}
+function gardenPointAllowed(x,y){const a=gardenBounds();return x>=Math.max(25,a.left)&&x<=Math.min(width-25,a.right)&&y>=Math.max(70,a.top)&&y<=Math.min(height-75,a.bottom)&&!(x<width*.31&&y<Math.min(height*.3,compactLayout()?116:height));}
+function updateInputUI(){
+  document.body?.classList?.toggle('hand-mode',mode==='hand');
+  const button=document.getElementById('mouse');if(button){button.textContent=compactLayout()?'触屏绘画':'鼠标练习';button.setAttribute('aria-pressed',String(mode==='mouse'));}
+}
+function manualHint(){return compactLayout()?'轻点种花 · 滑动引藤 · 下方按钮控制绽放与闭合':'点击种花 · 移动引藤 · 空格绽放 · F 闭合';}
+function queueViewportResize(){if(!viewportResizeFrame)viewportResizeFrame=window.requestAnimationFrame(()=>{viewportResizeFrame=0;windowResized(true);});}
+function bindCanvasInput(elt){
+  const point=event=>{const r=elt.getBoundingClientRect();return {x:(event.clientX-r.left)*width/r.width,y:(event.clientY-r.top)*height/r.height};};
+  elt.addEventListener('pointerdown',event=>{
+    if(mode!=='mouse'||event.isPrimary===false||event.button!==0)return;
+    const p=point(event);if(event.pointerType==='touch'||event.pointerType==='pen'){
+      event.preventDefault();inputKind='touch';touchInput={id:event.pointerId,down:true,...p,startX:p.x,startY:p.y,moved:false};lastManualPoint={...p};elt.setPointerCapture?.(event.pointerId);
+    }else{inputKind='mouse';pendingMousePlant=p;}
+  });
+  elt.addEventListener('pointermove',event=>{if(!touchInput.down||event.pointerId!==touchInput.id)return;event.preventDefault();const p=point(event);touchInput.moved ||=Math.hypot(p.x-touchInput.startX,p.y-touchInput.startY)>12;Object.assign(touchInput,p);lastManualPoint={...p};});
+  const release=event=>{if(event.pointerId!==touchInput.id)return;const p=point(event);if(event.type==='pointerup'&&!touchInput.moved&&Math.hypot(p.x-touchInput.startX,p.y-touchInput.startY)<=12&&mode==='mouse'){pendingMousePlant=p;plantGesture.armed=true;}touchInput.down=false;touchInput.id=null;elt.releasePointerCapture?.(event.pointerId);};
+  elt.addEventListener('pointerup',release);elt.addEventListener('pointercancel',release);
+}
+function useManualMode(){
+  cameraCancelled=true;mode='mouse';cameraReady=false;trackingSession++;hands=[];cameraStream?.getTracks().forEach(track=>track.stop());video?.remove();video=null;cameraPreviewReady=false;document.getElementById('tracking-overlay')?.remove();
+  const meter=document.getElementById('tracking-speed');if(meter)meter.textContent='';
+  const button=document.getElementById('camera');if(button)button.textContent='开启手势';
+  filteredHand=null;resetPlantGesture();updateInputUI();updateParticleCount();setStatus(manualHint());queueViewportResize();
+}
+function triggerManualAction(kind){const a=gardenBounds();manualAction={kind,until:millis()+650,point:lastManualPoint||{x:(a.left+a.right)/2,y:(a.top+a.bottom)/2}};}
 function setup(){
-  const canvas=createCanvas(window.innerWidth,window.innerHeight);
+  const view=viewportSize();const canvas=createCanvas(view.w,view.h);document.documentElement?.style?.setProperty('--app-height',view.h+'px');
   canvas.parent('canvas-container');pixelDensity(1);frameRate(45);
-  canvas.elt.addEventListener('pointerdown',event=>{if(mode==='mouse'&&event.button===0)pendingMousePlant={x:event.clientX,y:event.clientY};});
+  bindCanvasInput(canvas.elt);
+  window.visualViewport?.addEventListener('resize',queueViewportResize);
+  document.getElementById('bloom')?.addEventListener('click',()=>triggerManualAction('open'));document.getElementById('close')?.addEventListener('click',()=>triggerManualAction('fist'));
   document.getElementById('camera').addEventListener('click',startCamera);
-  document.getElementById('mouse').addEventListener('click',()=>{mode='mouse';hands=[];filteredHand=null;resetPlantGesture();document.getElementById('mouse').setAttribute('aria-pressed','true');updateParticleCount();setStatus('点击种花，大小随机 · 空格张掌绽放 · F 键握拳闭合');});
+  document.getElementById('mouse').addEventListener('click',useManualMode);
   document.getElementById('clear').addEventListener('click',resetScene);
   document.getElementById('save').addEventListener('click',saveParticleArtwork);
   setupGardenSound();
-  resetScene();
+  updateInputUI();resetScene();if(compactLayout())setStatus(manualHint());lastLayoutBounds=gardenBounds();
 }
 
 function setStatus(message) { const el = document.getElementById('status'); if (el) el.textContent = message; }
@@ -33,14 +76,14 @@ async function startCamera() {
   trackingSession++; cameraReady=false; hands=[];
   document.getElementById('tracking-overlay')?.remove();
   const button = document.getElementById('camera');
-  startingCamera = true; if (button) button.disabled = true;
+  cameraCancelled=false;startingCamera = true; if (button) button.disabled = true;
   setStatus('第 1 步：正在请求摄像头，请允许浏览器访问。');
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('请通过 localhost 或 HTTPS 打开网页');
     // 重试之前停止上一次的视频，避免摄像头被本页面重复占用。
     cameraStream?.getTracks().forEach(track=>track.stop());
     video?.remove(); cameraPreviewReady=false;
-    cameraStream = await navigator.mediaDevices.getUserMedia({video: {width:{ideal:320}, height:{ideal:240},frameRate:{ideal:30,max:30}}, audio:false});
+    cameraStream = await navigator.mediaDevices.getUserMedia({video: {facingMode:{ideal:'user'},width:{ideal:320}, height:{ideal:240},frameRate:{ideal:30,max:30}}, audio:false});
     video = createVideo([]); video.hide();
     video.elt.muted = true; video.elt.setAttribute('playsinline', '');
     const loaded = new Promise((resolve,reject)=>{
@@ -51,23 +94,26 @@ async function startCamera() {
     await withTimeout(video.elt.play(),15000,'摄像头无法播放，请检查是否被其他软件占用');
     if(video.elt.readyState<2) await withTimeout(loaded,15000,'没有收到摄像头画面，请检查 Windows 摄像头隐私设置');
     video.size(320,240); cameraPreviewReady=true;
-    video.elt.style.cssText='display:block;position:fixed;right:20px;top:90px;width:160px;height:120px;object-fit:cover;transform:scaleX(-1);z-index:4;border:1px solid #a99ad8;border-radius:12px;pointer-events:none';
+    video.elt.id='camera-preview';video.elt.style.cssText='';
+    if(cameraCancelled)return;
     setStatus('第 2 步：摄像头已开启，右上角应有画面。正在加载手势模型…');
     if(typeof ml5==='undefined') throw new Error('摄像头正常，但 ml5.js 未加载，请检查网络后刷新');
     trackingSession++; hands=[]; detectionFrames=0;
     lastTrackedVideoTime=-1;
     const tracker=await loadHandTracker(video.elt);
+    if(cameraCancelled)return;
     handPose=tracker.model;hands=tracker.results;trackingRuntime=tracker.runtime;
     detectionFrames=1;
-    cameraReady = true; mode = 'hand';resetPlantGesture();updateParticleCount();
+    cameraReady = true; mode = 'hand';resetPlantGesture();updateInputUI();updateParticleCount();lastLayoutBounds=gardenBounds();
     document.getElementById('mouse')?.setAttribute('aria-pressed', 'false');
     if (button) button.textContent = '重新识别';
     lastDetectionState='';
     setStatus(hands.length?'已找到手：张掌种花并绽放，食指移动引藤，握拳闭合。':'识别运行正常，尚未找到手。请将手掌放入右上角画面。');
     detectionLoop(trackingSession);
   } catch (error) {
+    if(cameraCancelled)return;
     if(!cameraPreviewReady){cameraStream?.getTracks().forEach(track=>track.stop());video?.remove();video=null;}
-    cameraReady=false; mode='mouse';
+    cameraReady=false; mode='mouse';updateInputUI();
     const reasons={NotAllowedError:'摄像头被浏览器或 Windows 阻止，请检查两处权限',NotFoundError:'未找到摄像头，请检查设备连接',NotReadableError:'摄像头无法读取，可能正被其他软件占用'};
     const reason = reasons[error.name] || error.message;
     setStatus(`无法启动：${reason}。仍可用鼠标培育植物。`);
@@ -119,11 +165,12 @@ async function detectionLoop(session) {
 
 function paintTrackingOverlay() {
   let overlay=document.getElementById('tracking-overlay');
-  if(!overlay){overlay=document.createElement('canvas');overlay.id='tracking-overlay';overlay.width=320;overlay.height=240;overlay.style.cssText='position:fixed;right:20px;top:90px;width:160px;height:120px;z-index:5;pointer-events:none;transform:scaleX(-1)';document.body.appendChild(overlay);}
+  if(!overlay){overlay=document.createElement('canvas');overlay.id='tracking-overlay';overlay.width=320;overlay.height=240;overlay.style.cssText='';document.body.appendChild(overlay);}
   const c=overlay.getContext('2d');c.clearRect(0,0,320,240);
-  const sx=320/(video.elt.videoWidth||640),sy=240/(video.elt.videoHeight||480);
+  const vw=video.elt.videoWidth||320,vh=video.elt.videoHeight||240,scale=Math.min(320/vw,240/vh);
+  c.save();c.translate((320-vw*scale)/2,(240-vh*scale)/2);const sx=scale,sy=scale;
   c.strokeStyle='#f5df70';c.fillStyle='#fff5ba';c.lineWidth=2;
-  for(const hand of hands){const k=hand.keypoints;for(const chain of [[0,1,2,3,4],[0,5,6,7,8],[5,9,13,17,0],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]]){c.beginPath();chain.forEach((i,j)=>j?c.lineTo(k[i].x*sx,k[i].y*sy):c.moveTo(k[i].x*sx,k[i].y*sy));c.stroke();}for(const p of k){c.beginPath();c.arc(p.x*sx,p.y*sy,2.5,0,7);c.fill();}}
+  for(const hand of hands){const k=hand.keypoints;for(const chain of [[0,1,2,3,4],[0,5,6,7,8],[5,9,13,17,0],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]]){c.beginPath();chain.forEach((i,j)=>j?c.lineTo(k[i].x*sx,k[i].y*sy):c.moveTo(k[i].x*sx,k[i].y*sy));c.stroke();}for(const p of k){c.beginPath();c.arc(p.x*sx,p.y*sy,2.5,0,7);c.fill();}}c.restore();
 }
 
 
@@ -235,8 +282,9 @@ function resetScene(){
   const r=seeded(7103);
   for(let i=0;i<130;i++)ambient.push({x:r()*width,y:r()*height,phase:r()*7,size:.3+r()*.7});
   const scale=Math.min(1.3,Math.min(width/1000,height/700));
+  const initialArea=gardenBounds();
   for(const [x,y,size,type] of [[.76,.34,60,'veil'],[.23,.75,42,'coral'],[.83,.81,24,'seed'],[.4,.86,20,'plume']]){
-    const f=makeParticleFlower(x*width,y*height,size*Math.max(.55,scale),type,Math.floor(r()*1e8));
+    const f=makeParticleFlower(x*width,compactLayout()?initialArea.top+y*initialArea.h:y*height,size*Math.max(.4,compactLayout()?scale*.8:Math.max(.55,scale)),type,Math.floor(r()*1e8));
     f.bloom=size>75?.22:.55;f.goal=size>75?.48:1;f.autoAt=sceneTime+r()*.3;flowers.push(f);
   }
   for(const f of flowers)addBranchGroup(f.x+f.size*.15,f.y+f.size*.6,-1.6,Math.floor(r()*1e8),true,Math.min(1,f.size/110));
@@ -302,7 +350,7 @@ function cacheStemGrains(stem){
 function drawParticleStem(c,stem){
   const opacity=plantOpacity(stem);if(opacity<=0)return;
   const progress=Math.min(1,(sceneTime-stem.born)/1.2);
-  c.save();c.translate(stem.x,stem.y);c.rotate(Math.sin(sceneTime*.15+stem.phase)*.016);
+  c.save();c.translate(stem.x,stem.y);c.scale(stem.viewScale||1,stem.viewScale||1);c.rotate(Math.sin(sceneTime*.15+stem.phase)*.016);
   if(progress>=1){
     if(!stem.grainLayer)stem.grainLayer=cacheStemGrains(stem);
     c.globalAlpha=opacity;c.drawImage(stem.grainLayer.canvas,stem.grainLayer.x,stem.grainLayer.y);
@@ -347,9 +395,15 @@ function handleParticleInteraction(now){
   if(mode==='hand'&&hands.length){
     const k=hands[0].keypoints,g=readGesture(k);open=g.open;fist=confirmedFist(k,g,now);pinching=open;
     if(g.canRearm){plantGesture.releaseSince??=now;released=now-plantGesture.releaseSince>=160;}else plantGesture.releaseSince=null;
-    const p=fist?k[9]:k[8];raw={x:(1-p.x/(video.elt.videoWidth||320))*width,y:p.y/(video.elt.videoHeight||240)*height};
-  }else if(mode==='mouse'&&mouseX>=0&&mouseX<=width&&mouseY>=0&&mouseY<=height&&!document.elementFromPoint?.(mouseX,mouseY)?.closest('button,select,input,nav,.sound-controls')){
-    raw=pendingMousePlant?{...pendingMousePlant}:{x:mouseX,y:mouseY};if(pendingMousePlant)filteredHand=null;open=keyIsDown(32);fist=keyIsDown(70);pinching=Boolean(mouseDown||pendingMousePlant);released=!mouseDown&&!pendingMousePlant;
+    const p=fist?k[9]:k[8],a=compactLayout()?gardenBounds():{left:0,top:0,w:width,h:height};raw={x:a.left+(1-p.x/(video.elt.videoWidth||320))*a.w,y:a.top+p.y/(video.elt.videoHeight||240)*a.h};
+  }else if(mode==='mouse'){
+    const action=manualAction&&now<manualAction.until?manualAction:null;
+    const p=action?.point||pendingMousePlant||(touchInput.down?touchInput:inputKind==='touch'?null:{x:mouseX,y:mouseY});
+    if(p&&(p.x!==0||p.y!==0)&&p.x>=0&&p.x<=width&&p.y>=0&&p.y<=height&&(action||!document.elementFromPoint?.(p.x,p.y)?.closest('button,select,input,nav,.sound-controls'))){
+      raw={x:p.x,y:p.y};lastManualPoint={...raw};if(pendingMousePlant)filteredHand=null;
+      open=action?.kind==='open'||keyIsDown(32);fist=action?.kind==='fist'||keyIsDown(70);
+      pinching=Boolean(pendingMousePlant||inputKind!=='touch'&&mouseDown);released=!pendingMousePlant&&(inputKind==='touch'||!mouseDown);
+    }
   }
   if(!raw){
     handIntent={fistSince:null};plantGesture.releaseSince=null;pendingMousePlant=null;
@@ -359,7 +413,7 @@ function handleParticleInteraction(now){
   const point=filteredPoint(raw,now);cursorPoint=point;gardenSound.motion(point,now);emitGestureFeedback(point,now);
   const gesture=fist?'fist':open?'open':pinching?'plant':'move',changed=gesture!==currentGesture;
   if(changed)gardenSound.gesture(gesture,now);
-  if(changed)setStatus(({open:mode==='hand'?'张掌 · 种花并绽放':'空格 · 绽放',fist:'握拳 · 花序闭合',plant:'点击播种',move:mode==='mouse'?'点击种花 · 移动引藤 · 空格绽放 · F 闭合':'张掌种花并绽放 · 食指移动引藤 · 握拳闭合'})[gesture]);
+  if(changed)setStatus(({open:mode==='hand'?'张掌 · 种花并绽放':compactLayout()?'绽放 · 花瓣舒展':'空格 · 绽放',fist:mode==='hand'?'握拳 · 花序闭合':'闭合 · 花瓣收拢',plant:'点击播种',move:mode==='mouse'?manualHint():'张掌种花并绽放 · 食指移动引藤 · 握拳闭合'})[gesture]);
   triggerPlantGesture(mode==='hand'?open&&!fist:pinching&&!open&&!fist,released,point,now);pendingMousePlant=null;
   if(!open&&!fist){
     if(branchAnchor){const dx=point.x-branchAnchor.x,dy=point.y-branchAnchor.y,d=Math.hypot(dx,dy);if(d>28&&now-lastBranch>180){movementHeading=Math.atan2(dy,dx);advanceGardenStep();placeBranchNear(point,movementHeading,now);branchAnchor={...point};}}
@@ -374,7 +428,7 @@ function handleParticleInteraction(now){
 }
 
 function placeParticleFlower(x,y,large,retry=0){
-  if(x<25||x>width-25||y<70||y>height-75||x<width*.31&&y<height*.3)return null;
+  if(!gardenPointAllowed(x,y))return null;
   maintainGarden();
   const r=seeded(Math.floor(x*71+y*191+flowers.length*997+userPlantings*521));
   const roll=r(),isRandom=large==='random',openingMain=isRandom&&[1,3,5].includes(userPlantings);
@@ -383,25 +437,28 @@ function placeParticleFlower(x,y,large,retry=0){
   if(isRandom&&[0,4].includes(userPlantings))size=54+r()*16;
   if(isRandom&&[2,6].includes(userPlantings))size=32+r()*18;
   if(openingMain)size=Math.min(220,Math.max(115,Math.min(width,height)*(.23+r()*.04)));
-  size=Math.min(size,(width-36)/1.85,(height-140)/1.95);
-  const room=Math.min(x,width-x,y,height-y-65);
+  const area=gardenBounds(),compact=compactLayout();
+  if(compact&&area.h<320&&!openingMain)size*=.8;
+  size=Math.min(size,(width-36)/1.85,(height-140)/1.95,compact?Math.max(76,Math.min(area.w/(width>height?3.6:2.8),area.h/(width>height?1.95:3.15))):Infinity);
+  const room=Math.min(x-area.left,area.right-x,y-area.top,area.bottom-y-(compact?0:65));
   if(!openingMain&&size>room*.9)size=Math.max(20,Math.min(60,room*.65));
   const isLarge=size>75;
   const attempts=64,spread=openingMain?Math.min(380,Math.max(width,height)*.36):Math.min(300,Math.max(width,height)*.3);
   for(let i=0;i<attempts;i++){
     const a=i*2.4,d=i===0?0:spread*Math.sqrt(i/(attempts-1));
     let cx=x+Math.cos(a)*d,cy=y+Math.sin(a)*d;
-    if(openingMain&&i>=40){cx=size*.9+8+Math.max(0,width-size*1.8-16)*((i*.61803398875)%1);cy=size*1.1+8+Math.max(0,height-size*1.8-81)*((i*.41421356237)%1);}
-    if(openingMain){cx=Math.max(size*.9+8,Math.min(width-size*.9-8,cx));cy=Math.max(size*1.1+8,Math.min(height-size*.7-73,cy));}
-    if(cx<size*.9||cx>width-size*.9||cy<size*1.1||cy>height-size*.7-65||cx<width*.32&&cy<height*.3)continue;
-    if(flowers.some(f=>isGrowing(f)&&Math.hypot(cx-f.x,cy-f.y)<(size+f.size)*.88+15))continue;
+    if(openingMain&&compact&&i<24){const opposite=userPlantings===3,offset=i===0?0:Math.sqrt(i)*2;cx=opposite?area.right-size*.9-10-Math.cos(a)*offset:area.left+size*.9+10+Math.cos(a)*offset;cy=opposite?area.bottom-size*.7-10-Math.sin(a)*offset:area.top+size*1.1+10+Math.sin(a)*offset;}
+    if(openingMain&&i>=40){cx=size*.9+8+Math.max(0,width-size*1.8-16)*((i*.61803398875)%1);cy=area.top+size*1.1+8+Math.max(0,area.h-size*1.8-(compact?16:81))*((i*.41421356237)%1);}
+    if(openingMain){cx=Math.max(size*.9+8,Math.min(width-size*.9-8,cx));cy=Math.max(area.top+size*1.1+8,Math.min(area.bottom-size*.7-(compact?8:73),cy));}
+    if(cx<size*.9||cx>width-size*.9||cy<area.top+size*1.1||cy>area.bottom-size*.7-(compact?0:65)||cx<width*.32&&cy<height*.3)continue;
+    if(flowers.some(f=>isGrowing(f)&&Math.hypot(cx-f.x,cy-f.y)<(size+f.size*(f.viewScale||1))*.88+15))continue;
     const chosenType=nextFlowerForm(isLarge,size,r);
     const flowerSeed=Math.floor(r()*1e8),scheme=nextPlantingScheme(flowerSeed);
     const f=makeParticleFlower(cx,cy,size,chosenType,flowerSeed,scheme);plantingColors.push(scheme);plantingForms.push(chosenType);f.userCreated=true;f.openingMain=openingMain;f.goal=openingMain?.8:isLarge?.65:1;flowers.push(f);userPlantings++;maintainGarden();
     addBranchGroup(cx+size*.2,cy+size*.3,-1.5+(r()-.5),Math.floor(r()*1e8),false,Math.min(1,size/110));rebuildVineLinks();updateParticleCount();return f;
   }
   if(retry<3){
-    const nearby=flowers.filter(f=>isGrowing(f)&&(!f.openingMain||userPlantings>=4)&&gardenSteps-(f.createdStep??0)>=(openingMain?0:5)&&(openingMain||sceneTime-(f.born??0)>=(f.size>75?60:f.userCreated?25:12))&&Math.hypot(f.x-x,f.y-y)<(size+f.size)*1.2+(openingMain?spread:100)).sort((a,b)=>(a.createdStep??0)-(b.createdStep??0));
+    const nearby=flowers.filter(f=>isGrowing(f)&&(!f.openingMain||userPlantings>=4)&&gardenSteps-(f.createdStep??0)>=(openingMain?0:5)&&(openingMain||compact&&!f.userCreated||sceneTime-(f.born??0)>=(f.size>75?60:f.userCreated?25:12))&&Math.hypot(f.x-x,f.y-y)<(size+f.size)*1.2+(openingMain?spread:100)).sort((a,b)=>(a.createdStep??0)-(b.createdStep??0));
     if(nearby.length){nearby.slice(0,2).forEach(retirePlant);return placeParticleFlower(x,y,large,retry+1);}
   }
   return null;
@@ -424,7 +481,7 @@ function drawGestureFeedback(now){
   c.restore();
 }
 function placeBranchNear(point,heading,now){
-  if(point.x<25||point.x>width-25||point.y<70||point.y>height-75||point.x<width*.31&&point.y<height*.3)return null;
+  if(!gardenPointAllowed(point.x,point.y))return null;
   const r=seeded(Math.floor(point.x*71+point.y*119+stems.length*173+gardenSteps*47));
   // 连续运动形成一个有宽度的生长区域；只有部分区域露出藤蔓骨架。
   const kind=['vine','meadow','flowers','meadow','vine'][Math.floor(point.x/95+point.y/83)%5];
@@ -489,7 +546,7 @@ function drawFloatingPollen(c){
   const r=seeded(6931);c.save();
   for(let i=0;i<52;i++){
     const owner=flowers[i%flowers.length];if(!owner)break;
-    const a=r()*Math.PI*2+sceneTime*(.025+r()*.035),distance=owner.size*(.65+r()*.65);
+    const a=r()*Math.PI*2+sceneTime*(.025+r()*.035),distance=owner.size*(owner.viewScale||1)*(.65+r()*.65);
     const x=owner.x+Math.cos(a)*distance,y=owner.y+Math.sin(a)*distance+Math.sin(sceneTime*.3+i)*9;
     const size=1.5+r()*2.5;c.globalAlpha=owner.bloom*(.25+r()*.45)*plantOpacity(owner);c.strokeStyle=i%3?'#e578db':'#e4e99a';c.lineWidth=.65;
     c.save();c.translate(x,y);c.rotate(sceneTime*.12+i);c.beginPath();
@@ -498,8 +555,16 @@ function drawFloatingPollen(c){
   }c.restore();
 }
 function saveParticleArtwork(){drawParticleArtwork();saveCanvas('living-particles','png');}
-function updateParticleCount(){const e=document.getElementById('count');if(e)e.textContent=`你种下了 ${userPlantings} 朵花 · ${stems.filter(isGrowing).length} 组枝影`;const hint=document.querySelector?.('header p');if(hint)hint.textContent=userPlantings?'这座花园，正沿着你的动作生长。':(mode==='hand'?'张开手掌，种下你的第一朵花。':'点击画面，种下你的第一朵花。');}
-function windowResized(){const ow=width,oh=height;resizeCanvas(window.innerWidth,window.innerHeight);for(const f of flowers){f.x*=width/ow;f.y*=height/oh;}for(const s of stems){s.x*=width/ow;s.y*=height/oh;if(s.end){s.end.x*=width/ow;s.end.y*=height/oh;}}for(const p of ambient){p.x*=width/ow;p.y*=height/oh;}filteredHand=null;branchAnchor=null;feedbackAnchor=null;liveVineTip=null;liveVineLength=0;}
+function updateParticleCount(){const e=document.getElementById('count');if(e)e.textContent=`你种下了 ${userPlantings} 朵花 · ${stems.filter(isGrowing).length} 组枝影`;const hint=document.querySelector?.('header p');if(hint)hint.textContent=userPlantings?'这座花园，正沿着你的动作生长。':(mode==='hand'?'张开手掌，种下你的第一朵花。':compactLayout()?'轻点画面，种下你的第一朵花。':'点击画面，种下你的第一朵花。');}
+function windowResized(force=false){
+  const view=viewportSize(),old=lastLayoutBounds||gardenBounds();
+  if(!force&&view.w===width&&view.h===height)return;
+  const ow=width,oh=height;document.documentElement?.style?.setProperty('--app-height',view.h+'px');resizeCanvas(view.w,view.h);updateInputUI();const area=gardenBounds();
+  for(const f of flowers){const scale=Math.min(1,(area.w-12)/(f.size*1.9),(area.h-12)/(f.size*1.85));f.viewScale=scale;const size=f.size*scale;f.x=Math.max(area.left+size*.9,Math.min(area.right-size*.9,area.left+(f.x-old.left)/old.w*area.w));f.y=Math.max(area.top+size*1.1,Math.min(area.bottom-size*.7,area.top+(f.y-old.top)/old.h*area.h));}
+  for(const s of stems){const x=s.x,y=s.y,base=s.layoutBasis||(s.layoutBasis={w:old.w,h:old.h}),nextScale=Math.min(1,area.w/base.w,area.h/base.h),gain=nextScale/(s.viewScale||1);s.x=area.left+(x-old.left)/old.w*area.w;s.y=area.top+(y-old.top)/old.h*area.h;s.viewScale=nextScale;if(s.end)s.end={x:s.x+(s.end.x-x)*gain,y:s.y+(s.end.y-y)*gain};}
+  for(const p of ambient){p.x*=width/ow;p.y*=height/oh;}rebuildVineLinks();lastLayoutBounds=area;filteredHand=null;branchAnchor=null;feedbackAnchor=null;liveVineTip=null;liveVineLength=0;touchInput.down=false;pendingMousePlant=null;
+}
+
 window.addEventListener('pagehide',()=>{trackingSession++;cameraReady=false;handPose?.detectStop();cameraStream?.getTracks().forEach(track=>track.stop());});
 
 function rebuildVineLinks(){
@@ -649,6 +714,7 @@ function drawParticleFlower(c,f){
   const opacity=plantOpacity(f);if(opacity<=0)return;
   const b=Math.max(0,Math.min(1,f.bloom)),ease=b*b*(3-2*b);
   c.save();c.translate(f.x+Math.sin(sceneTime*.18+f.phase)*2,f.y+Math.cos(sceneTime*.2+f.phase)*2);
+  c.scale(f.viewScale||1,f.viewScale||1);
   const response=f.responsePulse==null?0:Math.max(0,1-(sceneTime-f.responsePulse)/.8);
   c.scale(1+response*.06,1+response*.06);
   for(const thread of f.filaments){
